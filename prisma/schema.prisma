@@ -1,0 +1,42 @@
+datasource db {
+  provider = "mysql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model OrdemProducao {
+  id          String      @id
+  numeroOP    String?
+  produto     String
+  quantidade  Int
+  status      String      @default("montagem")
+  criadoEm    DateTime    @default(now())
+  eventos     EventoOP[]
+  subprodutos Subproduto[]
+}
+
+model EventoOP {
+  id            String   @id
+  op_id         String
+  tipo          String
+  etapa         String
+  funcionarioId String
+  dados         Json
+  timestamp     DateTime @default(now())
+
+  ordemProducao OrdemProducao @relation(fields: [op_id], references: [id])
+}
+
+model Subproduto {
+  id            String   @id
+  op_id         String
+  etiquetaId    String   @unique
+  tipo          String
+  quantidade    Int
+  funcionarioId String
+  criadoEm      DateTime @default(now())
+
+  ordemProducao OrdemProducao @relation(fields: [op_id], references: [id])
+}
