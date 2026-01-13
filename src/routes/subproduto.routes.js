@@ -1,15 +1,16 @@
 const express = require('express');
+const router = express.Router();
 const {
   adicionarSubproduto,
+  adicionarSubprodutosBatch,
   listarSubprodutos,
   atualizarSubproduto,
   removerSubproduto
 } = require('../controllers/subproduto.controller');
 
-const router = express.Router();
-
 router.post('/', adicionarSubproduto);
-router.get('/op/:opId', listarSubprodutos);
+router.post('/batch', adicionarSubprodutosBatch);
+router.get('/:opId', listarSubprodutos);
 router.put('/:id', atualizarSubproduto);
 router.delete('/:id', removerSubproduto);
 

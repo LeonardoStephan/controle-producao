@@ -1,13 +1,15 @@
 const express = require('express');
 const router = express.Router();
+const {
+  criarOp,
+  adicionarEvento,
+  finalizarEtapa,
+  resumoOp
+} = require('../controllers/op.controller');
 
-const controller = require('../controllers/op.controller');
-
-router.post('/', controller.criarOp);
-router.post('/:id/eventos', controller.adicionarEvento);
-router.post('/:id/montagem/finalizar', controller.finalizarMontagem);
-router.get('/:id/resumo', controller.resumoOp);
-router.post('/:id/teste/finalizar', controller.finalizarTeste);
-router.post('/:id/embalagem-estoque/finalizar', controller.finalizarEmbalagemEstoque);
+router.post('/', criarOp);
+router.post('/:id/eventos', adicionarEvento);
+router.post('/:id/finalizar/:etapa', finalizarEtapa);
+router.get('/:id/resumo', resumoOp);
 
 module.exports = router;

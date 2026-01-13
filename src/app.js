@@ -2,22 +2,19 @@ const express = require('express');
 const cors = require('cors');
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Backend funcionando' });
-});
-
-// ⚠️ LINHA CRÍTICA
+// Importar rotas
 const opRoutes = require('./routes/op.routes');
-app.use('/ops', opRoutes);
-
-const webhookRoutes = require('./routes/webhook.routes');
-app.use('/webhooks', webhookRoutes);
-
 const subprodutoRoutes = require('./routes/subproduto.routes');
+const webhookRoutes = require('./routes/webhook.routes');
+const healthRoutes = require('./routes/health.routes');
+
+// Registrar rotas
+app.use('/op', opRoutes);
 app.use('/subprodutos', subprodutoRoutes);
+app.use('/webhook', webhookRoutes);
+app.use('/health', healthRoutes);
 
 module.exports = app;

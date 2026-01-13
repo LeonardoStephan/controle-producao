@@ -1,9 +1,10 @@
+const crypto = require('crypto');
 const { prisma } = require('../database/prisma');
 
 /* =====================================================
    RECEBER EVENTO OMIE
    ===================================================== */
-exports.receberEventoOmie = async (req, res) => {
+const receberEventoOmie = async (req, res) => {
   const { etiquetaId, opId, tipo, quantidade, funcionarioId, payload } = req.body;
 
   if (!etiquetaId || !opId) {
@@ -12,38 +13,44 @@ exports.receberEventoOmie = async (req, res) => {
 
   try {
     // Verifica se a OP existe
-    const op = await prisma.ordens_producao.findUnique({ where: { id: opId } });
+    const op = await prisma.ordemProducao.findUnique({ where: { id: opId } });
     if (!op) return res.status(404).json({ erro: 'OP não encontrada' });
 
     // Verifica duplicidade da etiqueta
-    const existente = await prisma.subprodutos.findUnique({ where: { etiquetaId } });
+    const existente = await prisma.subproduto.findUnique({ where: { etiquetaId } });
     if (existente) return res.json({ ok: true, duplicado: true });
 
     // Cria o subproduto vinculado à OP
-    await prisma.subprodutos.create({
+    await prisma.subproduto.create({
       data: {
-        op_id: opId,
-        etiqueta_id: etiquetaId,
+        id: crypto.randomUUID(),
+        opId,
+        etiquetaId,
         tipo: tipo || 'omie',
         quantidade: quantidade || 1,
-        funcionario_id: funcionarioId || 'omie',
+        funcionarioId: funcionarioId || 'omie',
+        criadoEm: new Date()
       },
     });
 
     // Registra evento de subproduto registrado
-    await prisma.eventos_op.create({
+    await prisma.eventoOP.create({
       data: {
-        op_id: opId,
+        id: crypto.randomUUID(),
+        opId,
         tipo: 'subproduto_registrado',
         etapa: op.status,
-        funcionario_id: funcionarioId || 'omie',
+        funcionarioId: funcionarioId || 'omie',
         dados: { etiquetaId, payload },
+        criadoEm: new Date()
       },
     });
 
     return res.json({ ok: true });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ erro: 'Erro ao processar evento Omie' });
+    return res.status(500).json({ erro: 'Erro ao processar evento Omie', detalhes: err.message });
   }
 };
+
+module.exports = { receberEventoOmie };
