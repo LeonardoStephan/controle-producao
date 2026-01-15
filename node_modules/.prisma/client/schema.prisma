@@ -1,7 +1,6 @@
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")  // <- ESSENCIAL no Prisma 4
-
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -9,37 +8,47 @@ generator client {
 }
 
 model OrdemProducao {
-  id          String      @id
-  numeroOP    String?
-  produto     String
-  quantidade  Int
-  status      String      @default("montagem")
-  criadoEm    DateTime    @default(now())
+  id                  String   @id
+  numeroOP            String   @unique
+  descricaoProduto    String
+  quantidadeProduzida Int
+  status              String
+  criadoEm            DateTime @default(now())
 
-  eventos     EventoOP[]
-  subprodutos Subproduto[]
+  eventos        EventoOP[]
+  produtosFinais ProdutoFinal[]
 }
 
 model EventoOP {
   id            String   @id
   opId          String
-  tipo          String
   etapa         String
-  funcionarioId String
-  dados         Json
-  timestamp     DateTime @default(now())
-
-  ordemProducao OrdemProducao @relation(fields: [opId], references: [id])
-}
-
-model Subproduto {
-  id            String   @id
-  opId          String
-  etiquetaId    String   @unique
   tipo          String
-  quantidade    Int
   funcionarioId String
   criadoEm      DateTime @default(now())
 
   ordemProducao OrdemProducao @relation(fields: [opId], references: [id])
 }
+
+model ProdutoFinal {
+  id           String   @id
+  opId         String
+  serie        String   @unique
+  criadoEm     DateTime @default(now())
+
+  ordemProducao OrdemProducao @relation(fields: [opId], references: [id])
+  subprodutos   Subproduto[]
+}
+
+model Subproduto {
+  id                 String   @id
+  produtoFinalId     String
+  opNumeroSubproduto String
+  etiquetaId         String   @unique
+  funcionarioId      String
+  quantidade         Int
+  criadoEm           DateTime @default(now())
+
+  produtoFinal ProdutoFinal @relation(fields: [produtoFinalId], references: [id])
+}
+

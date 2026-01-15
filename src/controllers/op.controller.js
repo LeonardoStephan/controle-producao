@@ -1,254 +1,286 @@
 const crypto = require('crypto');
-const { prisma } = require('../database/prisma');
 const axios = require('axios');
+const { prisma } = require('../database/prisma');
+const { FLUXO_ETAPAS, TIPOS_EVENTO } = require('../domain/fluxoOp');
 
-/* =====================================================
-   VALIDAÇÃO DE FLUXO POR FUNCIONÁRIO / ETAPA
-===================================================== */
-function validarEvento(eventos, funcionarioId, etapa, novoTipo) {
-  const eventosFiltrados = eventos
-    .filter(e => e.funcionarioId === funcionarioId && e.etapa === etapa)
-    .sort((a, b) => b.timestamp - a.timestamp);
+/* ============================
+   BUSCAR OP NA API EXTERNA
+============================ */
+async function buscarOpNaAPI(numeroOP, empresa) {
+  const appHash = empresa === 'marchi'
+    ? 'marchi-01i5xgxk'
+    : 'gs-01i4odn5';
 
-  const ultimo = eventosFiltrados[0];
-  const ultimoTipo = ultimo?.tipo;
+  const response = await axios.post(
+    'http://restrito.viaondarfid.com.br/api/produto_etiqueta.php',
+    { appHash, numOrdemProducao: numeroOP }
+  );
 
-  if (!ultimo && novoTipo !== 'inicio') return 'Primeiro evento da etapa deve ser "inicio"';
-  if (ultimoTipo === 'inicio' && novoTipo === 'inicio') return 'Etapa já iniciada';
-  if (ultimoTipo !== 'inicio' && novoTipo === 'pausa') return 'Não é possível pausar sem estar em atividade';
-  if (ultimoTipo !== 'pausa' && novoTipo === 'retorno') return 'Retorno só é permitido após pausa';
-  if (!['inicio', 'retorno'].includes(ultimoTipo) && novoTipo === 'fim') return 'Não é possível finalizar sem estar em atividade';
-  if (ultimoTipo === 'fim') return 'Etapa já finalizada';
-
-  return null;
+  return response.data.data?.[0] || null;
 }
 
-/* =====================================================
-   FUNÇÃO AUXILIAR PARA VALIDAR ETIQUETA NA API EXTERNA
-===================================================== */
-async function validarEtiquetaNaAPI(opNumero, etiquetaId, empresa) {
-  const appHash = empresa === 'marchi' ? 'marchi-01i5xgxk' : 'gs-01i4odn5';
-  try {
-    const response = await axios.post(
-      'http://restrito.viaondarfid.com.br/api/reimprimir_etiqueta.php',
-      { appHash, numOrdemProducao: opNumero }
-    );
+/* ============================
+   INICIAR OP (MONTAGEM)
+============================ */
+const iniciarOp = async (req, res) => {
+  const { numeroOP, empresa, funcionarioId } = req.body;
 
-    const etiquetasDaAPI = response.data.etiquetas || [];
-    return etiquetasDaAPI.some(e => e.etiquetaId === etiquetaId);
-  } catch (err) {
-    console.error('Erro ao consultar API de etiquetas:', err.message);
-    throw new Error('Falha na validação da etiqueta na API externa');
-  }
-}
-
-/* =====================================================
-   CRIAR OP (com início automático da montagem)
-===================================================== */
-const criarOp = async (req, res) => {
-  const { produto, quantidade, numeroOP, funcionarioId } = req.body;
-  if (!produto) return res.status(400).json({ erro: 'produto é obrigatório' });
-
-  try {
-    const opId = crypto.randomUUID();
-    const op = await prisma.ordemProducao.create({
-      data: {
-        id: opId,
-        numeroOP: numeroOP || null,
-        produto,
-        quantidade: quantidade || 0,
-        status: 'montagem',
-        criadoEm: new Date(),
-      },
+  if (!numeroOP || !empresa || !funcionarioId) {
+    return res.status(400).json({
+      erro: 'numeroOP, empresa e funcionarioId são obrigatórios'
     });
+  }
 
+  const externa = await buscarOpNaAPI(numeroOP, empresa);
+  if (!externa) {
+    return res.status(404).json({
+      erro: 'OP não existe na API externa'
+    });
+  }
+
+  let op = await prisma.ordemProducao.findFirst({
+    where: { numeroOP }
+  });
+
+  if (!op) {
+    op = await prisma.ordemProducao.create({
+      data: {
+        id: crypto.randomUUID(),
+        numeroOP,
+        descricaoProduto: externa.descricao_produto,
+        quantidadeProduzida: Number(externa.quantidade_total),
+        status: 'montagem'
+      }
+    });
+  }
+
+  // Evita criar dois "inicio/montagem"
+  const jaIniciada = await prisma.eventoOP.findFirst({
+    where: { opId: op.id, etapa: 'montagem', tipo: 'inicio' }
+  });
+
+  if (!jaIniciada) {
     await prisma.eventoOP.create({
       data: {
         id: crypto.randomUUID(),
-        opId,
+        opId: op.id,
         tipo: 'inicio',
         etapa: 'montagem',
-        funcionarioId: funcionarioId || 'sistema',
-        dados: {},
-        timestamp: new Date(),
-      },
+        funcionarioId
+      }
     });
-
-    return res.status(201).json(op);
-  } catch (err) {
-    console.error("ERRO CRIAR OP:", err);
-    return res.status(500).json({ erro: 'Erro ao criar OP', detalhes: err.message });
   }
+
+  res.json({ ok: true, op });
 };
 
-/* =====================================================
-   ADICIONAR EVENTO GENÉRICO
-===================================================== */
+/* ============================
+   EVENTOS (PAUSA / RETORNO)
+============================ */
 const adicionarEvento = async (req, res) => {
   const { id } = req.params;
-  const { tipo, etapa, funcionarioId, dados } = req.body;
+  const { tipo, funcionarioId } = req.body;
 
-  if (!tipo || !etapa || !funcionarioId)
-    return res.status(400).json({ erro: 'tipo, etapa e funcionarioId são obrigatórios' });
-
-  try {
-    const op = await prisma.ordemProducao.findUnique({ where: { id } });
-    if (!op) return res.status(404).json({ erro: 'OP não encontrada' });
-
-    const eventos = await prisma.eventoOP.findMany({ where: { opId: id } });
-    const erro = validarEvento(eventos, funcionarioId, etapa, tipo);
-    if (erro) return res.status(400).json({ erro });
-
-    await prisma.eventoOP.create({
-      data: {
-        id: crypto.randomUUID(),
-        opId: id,
-        tipo,
-        etapa,
-        funcionarioId,
-        dados: dados || {},
-        timestamp: new Date(),
-      },
-    });
-
-    return res.status(201).json({ ok: true });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ erro: 'Erro ao adicionar evento', detalhes: err.message });
+  if (!TIPOS_EVENTO.includes(tipo)) {
+    return res.status(400).json({ erro: 'Tipo de evento inválido' });
   }
+
+  if (!funcionarioId) {
+    return res.status(400).json({ erro: 'funcionarioId é obrigatório' });
+  }
+
+  if (tipo === 'inicio' || tipo === 'fim') {
+    return res.status(400).json({
+      erro: 'Use os endpoints específicos para início ou finalização'
+    });
+  }
+
+  const op = await prisma.ordemProducao.findUnique({ where: { id } });
+  if (!op) {
+    return res.status(404).json({ erro: 'OP não encontrada' });
+  }
+
+  const etapaAtual = op.status;
+
+  const ultimoEvento = await prisma.eventoOP.findFirst({
+    where: { opId: id, etapa: etapaAtual },
+    orderBy: { criadoEm: 'desc' }
+  });
+
+  if (tipo === 'pausa') {
+    if (!ultimoEvento || !['inicio', 'retorno'].includes(ultimoEvento.tipo)) {
+      return res.status(400).json({
+        erro: 'Só é possível pausar após início ou retorno'
+      });
+    }
+  }
+
+  if (tipo === 'retorno') {
+    if (!ultimoEvento || ultimoEvento.tipo !== 'pausa') {
+      return res.status(400).json({
+        erro: 'Só é possível retornar após pausa'
+      });
+    }
+  }
+
+  await prisma.eventoOP.create({
+    data: {
+      id: crypto.randomUUID(),
+      opId: id,
+      tipo,
+      etapa: etapaAtual,
+      funcionarioId
+    }
+  });
+
+  res.json({ ok: true });
 };
 
-/* =====================================================
-   FINALIZAR ETAPA (Montagem, Teste ou Embalagem)
-===================================================== */
+/* ============================
+   FINALIZAR ETAPA (FLUXO FORÇADO)
+============================ */
 const finalizarEtapa = async (req, res) => {
   const { id, etapa } = req.params;
-  const { funcionarioId, quantidadeProduzida, subprodutos } = req.body;
+  const { funcionarioId } = req.body;
 
-  if (!funcionarioId) return res.status(400).json({ erro: 'funcionarioId é obrigatório' });
+  if (!funcionarioId)
+    return res.status(400).json({ erro: 'funcionarioId é obrigatório' });
 
-  try {
-    const op = await prisma.ordemProducao.findUnique({ where: { id } });
-    if (!op) return res.status(404).json({ erro: 'OP não encontrada' });
+  const op = await prisma.ordemProducao.findUnique({ where: { id } });
+  if (!op)
+    return res.status(404).json({ erro: 'OP não encontrada' });
 
-    if (op.status !== etapa) return res.status(400).json({ erro: `OP não está na etapa ${etapa}` });
+  /* 🔒 garante que a etapa da URL é a etapa atual */
+  if (op.status !== etapa)
+    return res.status(400).json({
+      erro: `Não é possível finalizar ${etapa}. Etapa atual: ${op.status}`
+    });
 
-    const registros = [];
+  const index = FLUXO_ETAPAS.indexOf(etapa);
+  if (index === -1)
+    return res.status(400).json({ erro: 'Etapa inválida' });
 
-    if (Array.isArray(subprodutos)) {
-      for (const sp of subprodutos) {
-        // Garantir quantidade Int
-        const quantidade = Number(sp.quantidade ?? 1);
-        if (!sp.etiquetaId || !sp.tipo || !quantidade || !sp.empresa) {
-          return res.status(400).json({ erro: 'Subproduto exige etiquetaId, tipo, quantidade e empresa' });
-        }
+  const ultimoEvento = await prisma.eventoOP.findFirst({
+    where: { opId: id, etapa },
+    orderBy: { criadoEm: 'desc' }
+  });
 
-        // Verifica duplicidade
-        const existente = await prisma.subproduto.findUnique({ where: { etiquetaId: sp.etiquetaId } });
-        if (existente)
-          return res.status(400).json({ erro: `Etiqueta ${sp.etiquetaId} já registrada` });
+  if (!ultimoEvento || ultimoEvento.tipo === 'pausa')
+    return res.status(400).json({
+      erro: 'Etapa não pode ser finalizada pausada ou sem início'
+    });
 
-        // Validação API externa
-        const valida = await validarEtiquetaNaAPI(op.numeroOP, sp.etiquetaId, sp.empresa);
-        if (!valida) return res.status(400).json({ erro: `Etiqueta ${sp.etiquetaId} não pertence à OP ou não existe na API` });
+  const proximaEtapa = FLUXO_ETAPAS[index + 1];
 
-        // Criar subproduto
-        const registro = await prisma.subproduto.create({
-          data: {
-            id: crypto.randomUUID(),
-            opId: id,
-            etiquetaId: sp.etiquetaId,
-            tipo: sp.tipo,
-            quantidade,
-            funcionarioId,
-            criadoEm: new Date(),
-          },
-        });
-        registros.push(registro);
-      }
+  /* FIM DA ETAPA */
+  await prisma.eventoOP.create({
+    data: {
+      id: crypto.randomUUID(),
+      opId: id,
+      tipo: 'fim',
+      etapa,
+      funcionarioId
     }
+  });
 
+  /* ATUALIZA STATUS */
+  await prisma.ordemProducao.update({
+    where: { id },
+    data: { status: proximaEtapa }
+  });
+
+  /* INÍCIO AUTOMÁTICO DA PRÓXIMA */
+  if (proximaEtapa !== 'finalizada') {
     await prisma.eventoOP.create({
       data: {
         id: crypto.randomUUID(),
         opId: id,
-        tipo: 'fim',
-        etapa,
-        funcionarioId,
-        dados: {
-          quantidadeProduzida,
-          subprodutos: registros.map(r => r.etiquetaId),
-        },
-        timestamp: new Date(),
-      },
+        tipo: 'inicio',
+        etapa: proximaEtapa,
+        funcionarioId
+      }
     });
-
-    const ordem = ['montagem', 'teste', 'embalagem_estoque', 'finalizada'];
-    const proxEtapa = ordem[ordem.indexOf(etapa) + 1] || 'finalizada';
-
-    await prisma.ordemProducao.update({
-      where: { id },
-      data: { status: proxEtapa },
-    });
-
-    return res.json({ ok: true, proximaEtapa: proxEtapa, subprodutosVinculados: registros.length });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ erro: 'Erro ao finalizar etapa', detalhes: err.message });
   }
+
+  res.json({
+    ok: true,
+    etapaFinalizada: etapa,
+    proximaEtapa
+  });
 };
 
-/* =====================================================
-   RESUMO DA OP
-===================================================== */
+/* ============================
+   RESUMO + TEMPO POR ETAPA
+============================ */
 const resumoOp = async (req, res) => {
   const { id } = req.params;
 
-  try {
-    const op = await prisma.ordemProducao.findUnique({ where: { id } });
-    if (!op) return res.status(404).json({ erro: 'OP não encontrada' });
+  const eventos = await prisma.eventoOP.findMany({
+    where: { opId: id },
+    orderBy: { criadoEm: 'asc' }
+  });
 
-    const eventos = await prisma.eventoOP.findMany({ where: { opId: id } });
+  if (!eventos.length) {
+    return res.status(404).json({ erro: 'OP não encontrada' });
+  }
 
-    const funcionarios = new Set();
-    const tempos = {};
-    const porFuncionarioEtapa = {};
+  const tempos = {};
+  let inicio = null;
 
-    for (const e of eventos) {
-      funcionarios.add(e.funcionarioId);
-      const chave = `${e.funcionarioId}_${e.etapa}`;
-      porFuncionarioEtapa[chave] = porFuncionarioEtapa[chave] || [];
-      porFuncionarioEtapa[chave].push(e);
+  for (const e of eventos) {
+    if (e.tipo === 'inicio' || e.tipo === 'retorno') {
+      inicio = e;
     }
 
-    for (const chave in porFuncionarioEtapa) {
-      const evs = porFuncionarioEtapa[chave].sort((a, b) => a.timestamp - b.timestamp);
-      const inicio = evs.find(e => e.tipo === 'inicio');
-      const fim = evs.find(e => e.tipo === 'fim');
-      if (inicio && fim) {
-        const etapa = inicio.etapa;
-        tempos[etapa] = (tempos[etapa] || 0) + (fim.timestamp - inicio.timestamp);
+    if ((e.tipo === 'pausa' || e.tipo === 'fim') && inicio) {
+      const diff = new Date(e.criadoEm) - new Date(inicio.criadoEm);
+      tempos[e.etapa] = (tempos[e.etapa] || 0) + diff;
+      inicio = null;
+    }
+  }
+
+  Object.keys(tempos).forEach(etapa => {
+    tempos[etapa] = Math.round(tempos[etapa] / 1000); // segundos
+  });
+
+  res.json({ temposPorEtapa: tempos, eventos });
+};
+
+/* ============================
+   Relatório de Rastreabilidade
+============================ */
+const rastreabilidadeOp = async (req, res) => {
+  const { id } = req.params;
+
+  const op = await prisma.ordemProducao.findUnique({
+    where: { id },
+    include: {
+      produtosFinal: {
+        include: {
+          subprodutos: true
+        }
       }
     }
+  });
 
-    return res.json({
-      opId: op.id,
-      produto: op.produto,
-      quantidade: op.quantidade,
-      status: op.status,
-      funcionarios: Array.from(funcionarios),
-      tempos,
-      totalEventos: eventos.length,
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ erro: 'Erro ao gerar resumo da OP', detalhes: err.message });
-  }
+  if (!op) return res.status(404).json({ erro: 'OP não encontrada' });
+
+  res.json({
+    opFinal: op.numeroOP,
+    produtos: op.produtosFinal.map(p => ({
+      serieProdutoFinal: p.etiquetaId,
+      subprodutos: p.subprodutos.map(s => ({
+        opSubproduto: s.opNumeroSubproduto,
+        serie: s.etiquetaId
+      }))
+    }))
+  });
 };
 
 module.exports = {
-  criarOp,
+  iniciarOp,
   adicionarEvento,
   finalizarEtapa,
   resumoOp,
+  rastreabilidadeOp
 };

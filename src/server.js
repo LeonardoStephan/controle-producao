@@ -1,7 +1,12 @@
-const app = require('./app');
+const express = require('express');
+const app = express();
 
-const PORT = 3333;
+app.use(express.json());
 
-app.listen(PORT, () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
+app.use('/op', require('./routes/op.routes'));
+app.use('/subproduto', require('./routes/subproduto.routes'));
+app.use('/produto-final', require('./routes/produtoFinal.routes'));
+
+app.listen(3333, () => {
+  console.log('Servidor rodando na porta 3333');
 });
