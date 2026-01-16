@@ -31,13 +31,14 @@ model EventoOP {
 }
 
 model ProdutoFinal {
-  id           String   @id
-  opId         String
-  serie        String   @unique
-  criadoEm     DateTime @default(now())
+  id        String   @id
+  opId      String
+  serie     String   @unique
+  criadoEm DateTime @default(now())
 
   ordemProducao OrdemProducao @relation(fields: [opId], references: [id])
   subprodutos   Subproduto[]
+  consumosPeca  ConsumoPeca[]
 }
 
 model Subproduto {
@@ -50,5 +51,29 @@ model Subproduto {
   criadoEm           DateTime @default(now())
 
   produtoFinal ProdutoFinal @relation(fields: [produtoFinalId], references: [id])
+  consumosPeca ConsumoPeca[]
 }
 
+model ConsumoPeca {
+  id            String   @id
+  codigoPeca    String   // ex: CF_MU904 (igual Omie)
+  qrCode        String   // conteúdo bruto do QR
+  funcionarioId String
+
+  produtoFinalId String?
+  subprodutoId   String?
+
+  inicioEm DateTime @default(now())
+  fimEm    DateTime?
+
+  produtoFinal ProdutoFinal? @relation(fields: [produtoFinalId], references: [id])
+  subproduto   Subproduto?   @relation(fields: [subprodutoId], references: [id])
+
+  @@index([codigoPeca])
+  @@index([qrCode])
+  @@index([produtoFinalId])
+  @@index([subprodutoId])
+
+  // garante que um QR não seja reutilizado enquanto ativo
+  @@unique([qrCode, fimEm])
+}
