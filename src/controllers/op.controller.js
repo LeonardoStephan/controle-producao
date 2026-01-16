@@ -147,18 +147,15 @@ const finalizarEtapa = async (req, res) => {
     return res.status(400).json({ erro: 'funcionarioId é obrigatório' });
 
   const op = await prisma.ordemProducao.findUnique({ where: { id } });
-  if (!op)
-    return res.status(404).json({ erro: 'OP não encontrada' });
+  if (!op) return res.status(404).json({ erro: 'OP não encontrada' });
 
-  /* 🔒 garante que a etapa da URL é a etapa atual */
   if (op.status !== etapa)
     return res.status(400).json({
       erro: `Não é possível finalizar ${etapa}. Etapa atual: ${op.status}`
     });
 
   const index = FLUXO_ETAPAS.indexOf(etapa);
-  if (index === -1)
-    return res.status(400).json({ erro: 'Etapa inválida' });
+  if (index === -1) return res.status(400).json({ erro: 'Etapa inválida' });
 
   const ultimoEvento = await prisma.eventoOP.findFirst({
     where: { opId: id, etapa },
@@ -172,41 +169,48 @@ const finalizarEtapa = async (req, res) => {
 
   const proximaEtapa = FLUXO_ETAPAS[index + 1];
 
-  /* FIM DA ETAPA */
-  await prisma.eventoOP.create({
-    data: {
-      id: crypto.randomUUID(),
-      opId: id,
-      tipo: 'fim',
-      etapa,
-      funcionarioId
-    }
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 1️⃣ Cria evento FIM da etapa atual
+      await tx.eventoOP.create({
+        data: {
+          id: crypto.randomUUID(),
+          opId: id,
+          tipo: 'fim',
+          etapa,
+          funcionarioId
+        }
+      });
 
-  /* ATUALIZA STATUS */
-  await prisma.ordemProducao.update({
-    where: { id },
-    data: { status: proximaEtapa }
-  });
+      // 2️⃣ Atualiza status da OP
+      await tx.ordemProducao.update({
+        where: { id },
+        data: { status: proximaEtapa }
+      });
 
-  /* INÍCIO AUTOMÁTICO DA PRÓXIMA */
-  if (proximaEtapa !== 'finalizada') {
-    await prisma.eventoOP.create({
-      data: {
-        id: crypto.randomUUID(),
-        opId: id,
-        tipo: 'inicio',
-        etapa: proximaEtapa,
-        funcionarioId
+      // 3️⃣ Cria evento INÍCIO da próxima etapa, se não for finalizada
+      if (proximaEtapa && proximaEtapa !== 'finalizada') {
+        await tx.eventoOP.create({
+          data: {
+            id: crypto.randomUUID(),
+            opId: id,
+            tipo: 'inicio',
+            etapa: proximaEtapa,
+            funcionarioId
+          }
+        });
       }
     });
-  }
 
-  res.json({
-    ok: true,
-    etapaFinalizada: etapa,
-    proximaEtapa
-  });
+    res.json({
+      ok: true,
+      etapaFinalizada: etapa,
+      proximaEtapa
+    });
+  } catch (err) {
+    console.error('Erro ao finalizar etapa:', err);
+    return res.status(500).json({ erro: 'Erro interno ao finalizar etapa' });
+  }
 };
 
 /* ============================

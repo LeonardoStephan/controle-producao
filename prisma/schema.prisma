@@ -31,10 +31,11 @@ model EventoOP {
 }
 
 model ProdutoFinal {
-  id        String   @id
-  opId      String
-  serie     String   @unique
-  criadoEm DateTime @default(now())
+  id            String   @id
+  opId          String
+  serie         String   @unique
+  codProdutoOmie String?  // <---- NOVO CAMPO
+  criadoEm      DateTime @default(now())
 
   ordemProducao OrdemProducao @relation(fields: [opId], references: [id])
   subprodutos   Subproduto[]
