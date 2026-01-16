@@ -255,7 +255,7 @@ const rastreabilidadeOp = async (req, res) => {
   const op = await prisma.ordemProducao.findUnique({
     where: { id },
     include: {
-      produtosFinal: {
+      produtosFinais: {
         include: {
           subprodutos: true
         }
@@ -263,15 +263,25 @@ const rastreabilidadeOp = async (req, res) => {
     }
   });
 
-  if (!op) return res.status(404).json({ erro: 'OP não encontrada' });
+  if (!op)
+    return res.status(404).json({ erro: 'OP não encontrada' });
 
   res.json({
-    opFinal: op.numeroOP,
-    produtos: op.produtosFinal.map(p => ({
-      serieProdutoFinal: p.etiquetaId,
-      subprodutos: p.subprodutos.map(s => ({
-        opSubproduto: s.opNumeroSubproduto,
-        serie: s.etiquetaId
+    opFinal: {
+      id: op.id,
+      numeroOP: op.numeroOP,
+      produto: op.descricaoProduto,
+      quantidadePlanejada: op.quantidadeProduzida,
+      status: op.status
+    },
+    produtosFinais: op.produtosFinais.map(pf => ({
+      id: pf.id,
+      serie: pf.serie,
+      subprodutos: pf.subprodutos.map(sp => ({
+        serie: sp.etiquetaId,
+        opSubproduto: sp.opNumeroSubproduto,
+        funcionario: sp.funcionarioId,
+        data: sp.criadoEm
       }))
     }))
   });
