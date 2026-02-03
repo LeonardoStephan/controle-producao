@@ -9,8 +9,7 @@ const TIPOS_EVENTO = [
   'inicio',
   'pausa',
   'retorno',
-  'fim',
-  'consumo_subproduto'
+  'fim'
 ];
 
 module.exports = {

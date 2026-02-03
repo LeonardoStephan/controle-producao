@@ -7,6 +7,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/////////////////////////////////////////////////////////
+/////////////////// PROCESSO PRODUÇÃO ///////////////////
+/////////////////////////////////////////////////////////
+
 model OrdemProducao {
   id                  String   @id
   numeroOP            String   @unique
@@ -15,8 +19,11 @@ model OrdemProducao {
   status              String
   criadoEm            DateTime @default(now())
 
+  nCodOP BigInt?
+
   eventos        EventoOP[]
   produtosFinais ProdutoFinal[]
+  subprodutos    Subproduto[]
 }
 
 model EventoOP {
@@ -31,50 +38,149 @@ model EventoOP {
 }
 
 model ProdutoFinal {
-  id            String   @id
-  opId          String
-  serie         String   @unique
-  codProdutoOmie String?  // <---- NOVO CAMPO
-  criadoEm      DateTime @default(now())
+  id             String   @id
+  opId           String
+  serie          String   @unique
+  codProdutoOmie String?
+  criadoEm       DateTime @default(now())
 
-  ordemProducao OrdemProducao @relation(fields: [opId], references: [id])
-  subprodutos   Subproduto[]
-  consumosPeca  ConsumoPeca[]
+  ordemProducao   OrdemProducao    @relation(fields: [opId], references: [id])
+  subprodutos     Subproduto[]
+  consumosPeca    ConsumoPeca[]
+  expedicoesSerie ExpedicaoSerie[]
 }
 
 model Subproduto {
   id                 String   @id
-  produtoFinalId     String
+  opId               String?
+  produtoFinalId     String?
   opNumeroSubproduto String
   etiquetaId         String   @unique
   funcionarioId      String
   quantidade         Int
   criadoEm           DateTime @default(now())
 
-  produtoFinal ProdutoFinal @relation(fields: [produtoFinalId], references: [id])
-  consumosPeca ConsumoPeca[]
+  ordemProducao OrdemProducao? @relation(fields: [opId], references: [id])
+  produtoFinal  ProdutoFinal?  @relation(fields: [produtoFinalId], references: [id])
+  consumosPeca  ConsumoPeca[]
 }
 
 model ConsumoPeca {
-  id            String   @id
-  codigoPeca    String   // ex: CF_MU904 (igual Omie)
-  qrCode        String   // conteúdo bruto do QR
+  id            String @id
+  codigoPeca    String
+  qrCode        String
   funcionarioId String
 
   produtoFinalId String?
   subprodutoId   String?
 
-  inicioEm DateTime @default(now())
+  inicioEm DateTime  @default(now())
   fimEm    DateTime?
 
   produtoFinal ProdutoFinal? @relation(fields: [produtoFinalId], references: [id])
   subproduto   Subproduto?   @relation(fields: [subprodutoId], references: [id])
 
+  // 🔒 BLINDAGEM REAL
+  @@unique([qrCode, fimEm])
   @@index([codigoPeca])
   @@index([qrCode])
   @@index([produtoFinalId])
   @@index([subprodutoId])
+}
 
-  // garante que um QR não seja reutilizado enquanto ativo
-  @@unique([qrCode, fimEm])
+/////////////////////////////////////////////////////////
+////////////////// PROCESSO EXPEDIÇÃO ///////////////////
+/////////////////////////////////////////////////////////
+
+model PedidoVenda {
+  id       String   @id
+  numeroPV String   @unique
+  cliente  String
+  criadoEm DateTime @default(now())
+
+  itens      PedidoVendaItem[]
+  expedicoes Expedicao[]
+}
+
+model PedidoVendaItem {
+  id             String @id
+  pedidoVendaId  String
+  codProdutoOmie String
+  descricao      String
+  quantidade     Int
+
+  pedidoVenda PedidoVenda @relation(fields: [pedidoVendaId], references: [id])
+
+  @@index([codProdutoOmie])
+}
+
+model Expedicao {
+  id            String    @id
+  numeroPedido  String // número digitado / lido
+  status        String
+  funcionarioId String
+  iniciadoEm    DateTime  @default(now())
+  finalizadoEm  DateTime?
+
+  eventos       EventoExpedicao[]
+  series        ExpedicaoSerie[]
+  fotosGerais   FotoExpedicaoGeral[]
+  PedidoVenda   PedidoVenda?         @relation(fields: [pedidoVendaId], references: [id])
+  pedidoVendaId String?
+}
+
+model EventoExpedicao {
+  id            String   @id
+  expedicaoId   String
+  tipo          String // inicio | pausa | retorno | fim
+  funcionarioId String
+  criadoEm      DateTime @default(now())
+
+  expedicao Expedicao @relation(fields: [expedicaoId], references: [id])
+}
+
+model ExpedicaoSerie {
+  id          String @id
+  expedicaoId String
+
+  // 🔑 produto sempre identificado
+  codProdutoOmie String
+
+  // 🔹 só existe se o produto tiver série
+  produtoFinalId String?
+  serie          String?
+
+  criadoEm DateTime @default(now())
+
+  expedicao    Expedicao       @relation(fields: [expedicaoId], references: [id])
+  produtoFinal ProdutoFinal?   @relation(fields: [produtoFinalId], references: [id])
+  fotos        FotoExpedicao[]
+
+  // 🔒 uma série só pode existir uma vez no sistema (quando existir)
+  @@unique([serie])
+  @@index([codProdutoOmie])
+  @@index([serie])
+}
+
+model FotoExpedicao {
+  id               String   @id
+  expedicaoSerieId String
+  url              String
+  criadoEm         DateTime @default(now())
+
+  expedicaoSerie ExpedicaoSerie @relation(fields: [expedicaoSerieId], references: [id])
+
+  @@index([expedicaoSerieId])
+}
+
+model FotoExpedicaoGeral {
+  id          String   @id
+  expedicaoId String
+  url         String
+  descricao   String? // ex: "caixa fechada", "lote de tags", "palete completo"
+  criadoEm    DateTime @default(now())
+
+  expedicao Expedicao @relation(fields: [expedicaoId], references: [id])
+
+  @@index([expedicaoId])
 }

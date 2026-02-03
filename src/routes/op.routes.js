@@ -7,8 +7,10 @@ router.post('/iniciar', controller.iniciarOp);
 router.post('/:id/eventos', controller.adicionarEvento);
 router.post('/:id/finalizar/:etapa', controller.finalizarEtapa);
 
+// LOG CRONOLÓGICO DA OP
 router.get('/:id/resumo', controller.resumoOp);
-router.get('/:id/rastreabilidade', controller.rastreabilidadeOp);
 
+// RASTREABILIDADE DE MATERIAIS
+router.get('/:id/rastreabilidade-materiais', controller.rastreabilidadeMateriais);
 
 module.exports = router;

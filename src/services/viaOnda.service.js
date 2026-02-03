@@ -7,9 +7,9 @@ function getAppHash(empresa) {
 }
 
 /* =========================
-   OP FINAL
+   OP FINAL OU SUBPRODUTO
 ========================= */
-async function buscarOPFinal(numeroOP, empresa) {
+async function buscarOP(numeroOP, empresa) {
   const response = await axios.post(
     'http://restrito.viaondarfid.com.br/api/produto_etiqueta.php',
     {
@@ -22,7 +22,7 @@ async function buscarOPFinal(numeroOP, empresa) {
     return null;
   }
 
-  return response.data.data[0];
+  return response.data.data;
 }
 
 /* =========================
@@ -45,15 +45,44 @@ async function buscarEtiquetaProdutoFinal(numeroOP, empresa) {
 }
 
 /* =========================
-   ETIQUETAS SUBPRODUTO
+   ETIQUETA SUBPRODUTO (CORRETO)
 ========================= */
 async function buscarEtiquetaSubproduto(numeroOP, serie, empresa) {
-  const etiquetas = await buscarEtiquetaProdutoFinal(numeroOP, empresa);
+  const etiquetas = await buscarOP(numeroOP, empresa);
+  if (!etiquetas) return false;
+
   return etiquetas.some(e => e.serie === serie);
 }
 
+/* =========================
+   PRODUTO POSSUI SÉRIE?
+========================= */
+async function viaOndaTemEtiqueta(codProdutoOmie, empresa) {
+  try {
+    const response = await axios.post(
+      'http://restrito.viaondarfid.com.br/api/reimprimir_etiqueta.php',
+      {
+        appHash: getAppHash(empresa),
+        codProduto: codProdutoOmie
+      }
+    );
+
+    if (response.data.response_code !== '200') {
+      return false;
+    }
+
+    // Se retornar dados, é porque há etiquetas (logo, possui série)
+    return Array.isArray(response.data.data) && response.data.data.length > 0;
+
+  } catch (err) {
+    console.error('ViaOnda erro ao verificar etiqueta:', err.message);
+    return false;
+  }
+}
+
 module.exports = {
-  buscarOPFinal,
+  buscarOP,
   buscarEtiquetaProdutoFinal,
-  buscarEtiquetaSubproduto
+  buscarEtiquetaSubproduto,
+  viaOndaTemEtiqueta
 };
