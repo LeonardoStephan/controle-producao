@@ -7,7 +7,7 @@ function getAppHash(empresa) {
 }
 
 /* =========================
-   OP FINAL OU SUBPRODUTO
+   BUSCAS PARA: OP FINAL OU SUBPRODUTO
 ========================= */
 async function buscarOP(numeroOP, empresa) {
   const response = await axios.post(
@@ -26,7 +26,7 @@ async function buscarOP(numeroOP, empresa) {
 }
 
 /* =========================
-   ETIQUETAS PRODUTO FINAL
+   BUSCAS PARA: ETIQUETAS PRODUTO FINAL
 ========================= */
 async function buscarEtiquetaProdutoFinal(numeroOP, empresa) {
   const response = await axios.post(
@@ -45,7 +45,7 @@ async function buscarEtiquetaProdutoFinal(numeroOP, empresa) {
 }
 
 /* =========================
-   ETIQUETA SUBPRODUTO (CORRETO)
+   BUSCAS PARA: ETIQUETA SUBPRODUTO
 ========================= */
 async function buscarEtiquetaSubproduto(numeroOP, serie, empresa) {
   const etiquetas = await buscarOP(numeroOP, empresa);

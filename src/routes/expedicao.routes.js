@@ -1,6 +1,5 @@
 const express = require('express');
 const controller = require('../controllers/expedicao.controller');
-
 const router = express.Router();
 
 router.post('/iniciar', controller.iniciarExpedicao);

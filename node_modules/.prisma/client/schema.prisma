@@ -14,16 +14,17 @@ generator client {
 model OrdemProducao {
   id                  String   @id
   numeroOP            String   @unique
+  empresa             String
   descricaoProduto    String
   quantidadeProduzida Int
   status              String
   criadoEm            DateTime @default(now())
-
-  nCodOP BigInt?
+  nCodOP              BigInt?
 
   eventos        EventoOP[]
   produtosFinais ProdutoFinal[]
   subprodutos    Subproduto[]
+  consumosPeca   ConsumoPeca[]
 }
 
 model EventoOP {
@@ -51,18 +52,26 @@ model ProdutoFinal {
 }
 
 model Subproduto {
-  id                 String   @id
-  opId               String?
+  id String @id
+
+  // ✅ subproduto sempre pertence a uma OP
+  opId String
+
   produtoFinalId     String?
   opNumeroSubproduto String
   etiquetaId         String   @unique
   funcionarioId      String
   quantidade         Int
+  codigoSubproduto   String?
   criadoEm           DateTime @default(now())
 
-  ordemProducao OrdemProducao? @relation(fields: [opId], references: [id])
-  produtoFinal  ProdutoFinal?  @relation(fields: [produtoFinalId], references: [id])
+  ordemProducao OrdemProducao @relation(fields: [opId], references: [id])
+  produtoFinal  ProdutoFinal? @relation(fields: [produtoFinalId], references: [id])
   consumosPeca  ConsumoPeca[]
+
+  @@index([opId])
+  @@index([codigoSubproduto])
+  @@unique([produtoFinalId, codigoSubproduto])
 }
 
 model ConsumoPeca {
@@ -70,6 +79,7 @@ model ConsumoPeca {
   codigoPeca    String
   qrCode        String
   funcionarioId String
+  opId          String
 
   produtoFinalId String?
   subprodutoId   String?
@@ -77,62 +87,40 @@ model ConsumoPeca {
   inicioEm DateTime  @default(now())
   fimEm    DateTime?
 
-  produtoFinal ProdutoFinal? @relation(fields: [produtoFinalId], references: [id])
-  subproduto   Subproduto?   @relation(fields: [subprodutoId], references: [id])
+  ordemProducao OrdemProducao @relation(fields: [opId], references: [id])
+  produtoFinal  ProdutoFinal? @relation(fields: [produtoFinalId], references: [id])
+  subproduto    Subproduto?   @relation(fields: [subprodutoId], references: [id])
 
-  // 🔒 BLINDAGEM REAL
   @@unique([qrCode, fimEm])
   @@index([codigoPeca])
   @@index([qrCode])
   @@index([produtoFinalId])
   @@index([subprodutoId])
+  @@index([opId])
 }
 
 /////////////////////////////////////////////////////////
 ////////////////// PROCESSO EXPEDIÇÃO ///////////////////
 /////////////////////////////////////////////////////////
 
-model PedidoVenda {
-  id       String   @id
-  numeroPV String   @unique
-  cliente  String
-  criadoEm DateTime @default(now())
-
-  itens      PedidoVendaItem[]
-  expedicoes Expedicao[]
-}
-
-model PedidoVendaItem {
-  id             String @id
-  pedidoVendaId  String
-  codProdutoOmie String
-  descricao      String
-  quantidade     Int
-
-  pedidoVenda PedidoVenda @relation(fields: [pedidoVendaId], references: [id])
-
-  @@index([codProdutoOmie])
-}
-
 model Expedicao {
   id            String    @id
-  numeroPedido  String // número digitado / lido
+  numeroPedido  String
+  empresa       String?
   status        String
   funcionarioId String
   iniciadoEm    DateTime  @default(now())
   finalizadoEm  DateTime?
 
-  eventos       EventoExpedicao[]
-  series        ExpedicaoSerie[]
-  fotosGerais   FotoExpedicaoGeral[]
-  PedidoVenda   PedidoVenda?         @relation(fields: [pedidoVendaId], references: [id])
-  pedidoVendaId String?
+  eventos     EventoExpedicao[]
+  series      ExpedicaoSerie[]
+  fotosGerais FotoExpedicaoGeral[]
 }
 
 model EventoExpedicao {
   id            String   @id
   expedicaoId   String
-  tipo          String // inicio | pausa | retorno | fim
+  tipo          String
   funcionarioId String
   criadoEm      DateTime @default(now())
 
@@ -143,10 +131,8 @@ model ExpedicaoSerie {
   id          String @id
   expedicaoId String
 
-  // 🔑 produto sempre identificado
   codProdutoOmie String
 
-  // 🔹 só existe se o produto tiver série
   produtoFinalId String?
   serie          String?
 
@@ -156,7 +142,6 @@ model ExpedicaoSerie {
   produtoFinal ProdutoFinal?   @relation(fields: [produtoFinalId], references: [id])
   fotos        FotoExpedicao[]
 
-  // 🔒 uma série só pode existir uma vez no sistema (quando existir)
   @@unique([serie])
   @@index([codProdutoOmie])
   @@index([serie])
@@ -177,7 +162,7 @@ model FotoExpedicaoGeral {
   id          String   @id
   expedicaoId String
   url         String
-  descricao   String? // ex: "caixa fechada", "lote de tags", "palete completo"
+  descricao   String?
   criadoEm    DateTime @default(now())
 
   expedicao Expedicao @relation(fields: [expedicaoId], references: [id])

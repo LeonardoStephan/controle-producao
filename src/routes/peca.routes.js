@@ -1,6 +1,5 @@
 const express = require('express');
 const controller = require('../controllers/peca.controller');
-
 const router = express.Router();
 
 router.post('/consumir', controller.consumirPeca);

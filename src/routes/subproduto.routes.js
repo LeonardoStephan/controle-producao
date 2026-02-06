@@ -1,8 +1,8 @@
 const express = require('express');
-const { consumirSubproduto } = require('../controllers/subproduto.controller');
-
+const { registrarSubproduto, consumirSubproduto } = require('../controllers/subproduto.controller');
 const router = express.Router();
 
+router.post('/registrar', registrarSubproduto);
 router.post('/consumir', consumirSubproduto);
 
 module.exports = router;
