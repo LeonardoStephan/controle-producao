@@ -52,6 +52,7 @@ Etapas atuais (codigo):
 Rotas principais:
 
 - `POST /op/iniciar`
+- `POST /op/:id/iniciar/:etapa`
 - `POST /op/:id/eventos`
 - `POST /op/:id/finalizar/:etapa`
 - `GET /op/:id/resumo`
@@ -59,6 +60,8 @@ Rotas principais:
 
 Observacoes:
 
+- Apos finalizar uma etapa, a proxima etapa exige inicio manual.
+- Exemplo: finalizar `montagem` -> chamar `POST /op/:id/iniciar/teste`.
 - Consumos sao permitidos apenas com OP em `montagem` ativa.
 - `retorno` respeita janela de jornada configurada no dominio.
 
@@ -127,6 +130,8 @@ Observacoes:
 
 ## Ajustes Recentes
 
+- Inicio manual da proxima etapa de OP (`POST /op/:id/iniciar/:etapa`).
+- `finalizar/:etapa` nao cria mais inicio automatico da proxima etapa.
 - Tempos por etapa com segundos (`5h30m10s`).
 - Remocao de `finalizada` em `temposPorEtapa`.
 - Padronizacao de `quantidadePlanejada` para `quantidade`.

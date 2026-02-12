@@ -205,23 +205,16 @@ async function execute({ params = {}, body = {} }) {
         where: { id: String(id) },
         data: { status: proximaEtapa }
       });
-
-      if (proximaEtapa && proximaEtapa !== 'finalizada') {
-        await tx.eventoOP.create({
-          data: {
-            id: crypto.randomUUID(),
-            opId: String(id),
-            tipo: 'inicio',
-            etapa: proximaEtapa,
-            funcionarioId: String(funcionarioId)
-          }
-        });
-      }
     });
 
     return {
       status: 200,
-      body: { ok: true, etapaFinalizada: etapa, proximaEtapa }
+      body: {
+        ok: true,
+        etapaFinalizada: etapa,
+        proximaEtapa,
+        requerInicioManualProximaEtapa: proximaEtapa !== 'finalizada'
+      }
     };
   } catch (err) {
     console.error('Erro ao finalizar etapa:', err);

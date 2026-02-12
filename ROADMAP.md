@@ -8,6 +8,7 @@ Plano de evolucao do projeto com foco em estabilidade operacional, rastreabilida
 - Consolidar historico por serie (producao, manutencao e expedicao)
 - Estruturar dominio fiscal (NF-e) com rastreio de eventos
 - Evoluir experiencia operacional para ambiente movel
+- Garantir precisao de tempo por etapa com inicio operacional manual
 
 ## Trilhas de Evolucao
 
@@ -93,6 +94,7 @@ Entregas:
 - Cache, retry controlado e controle de concorrencia
 - Suite minima de testes para endpoints principais
 - Ambiente previsivel em dev/homolog/prod
+- Fluxo OP validado com inicio manual por etapa (sem inicio automatico pos-finalizacao)
 
 ### Fase 2 (medio prazo, produto)
 

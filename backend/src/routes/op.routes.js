@@ -3,6 +3,7 @@ const controller = require('../controllers/op.controller');
 const router = express.Router();
 
 router.post('/iniciar', controller.iniciarOp);
+router.post('/:id/iniciar/:etapa', controller.iniciarEtapa);
 router.post('/:id/eventos', controller.adicionarEvento);
 router.post('/:id/finalizar/:etapa', controller.finalizarEtapa);
 

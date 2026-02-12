@@ -1,4 +1,5 @@
 const iniciarOpUseCase = require('../usecases/op/iniciarOp.usecase');
+const iniciarEtapaUseCase = require('../usecases/op/iniciarEtapa.usecase');
 const adicionarEventoUseCase = require('../usecases/op/adicionarEvento.usecase');
 const finalizarEtapaUseCase = require('../usecases/op/finalizarEtapa.usecase');
 const resumoOpUseCase = require('../usecases/op/resumoOp.usecase');
@@ -6,6 +7,11 @@ const rastreabilidadeMateriaisUseCase = require('../usecases/op/rastreabilidadeM
 
 const iniciarOp = async (req, res) => {
   const result = await iniciarOpUseCase.execute(req.body);
+  return res.status(result.status).json(result.body);
+};
+
+const iniciarEtapa = async (req, res) => {
+  const result = await iniciarEtapaUseCase.execute({ params: req.params, body: req.body });
   return res.status(result.status).json(result.body);
 };
 
@@ -37,6 +43,7 @@ const rastreabilidadeMateriais = async (req, res) => {
 
 module.exports = {
   iniciarOp,
+  iniciarEtapa,
   adicionarEvento,
   finalizarEtapa,
   resumoOp,
