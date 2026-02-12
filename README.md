@@ -108,7 +108,7 @@ Regras importantes:
 - QR validado por codigo da peca.
 - `qrId` salvo com base no ultimo trecho do QR (ex.: `ID:177038...`).
 - Bloqueio de duplicidade por `qrCode` e por `qrId`.
-- Se ja existir a mesma `codigoPeca` ativa no mesmo contexto (PF/subproduto), o sistema encerra a anterior (`fimEm`) e registra a nova automaticamente.
+- Se ja existir a mesma `codigoPeca` ativa no mesmo contexto (PF/subproduto), o sistema encerra todas as anteriores (`fimEm`) e registra a nova automaticamente.
 
 ## Expedicao
 
@@ -140,6 +140,7 @@ Observacoes:
 - Datas formatadas em `dd/mm/aaaa - HH:mm:ss` nos resumos/rastreabilidade.
 - Retorno de finalizacao da expedicao com status:
   - `{ "ok": true, "status": "finalizada" }`
+- Persistencia de datas em UTC no banco e exibicao em horario do Brasil (`America/Sao_Paulo`) na API de resumo/rastreabilidade.
 
 ## Execucao Local
 

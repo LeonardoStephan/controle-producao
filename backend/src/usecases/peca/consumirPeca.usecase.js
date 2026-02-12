@@ -45,7 +45,7 @@ async function execute(body) {
     let contextoserieProdFinalId = null;
 
     let codProdutoOmieResolved = null; // BOM do PF
-    let codProdutoOmiePlaca = null;    // BOM da placa (codigoSubproduto)
+    let codProdutoOmiePlaca = null; // BOM da placa (codigoSubproduto)
 
     // =========================
     // Contexto por ProdutoFinal
@@ -99,7 +99,7 @@ async function execute(body) {
           codProdutoOmieResolved = String(codProdutoOmie).trim();
         }
       } else {
-        // placa nÃ£o vinculada a PF -> comportamento antigo
+        // placa nao vinculada a PF -> comportamento antigo
         opIdResolved = sp.opId;
         contextoserieProdFinalId = null;
 
@@ -114,7 +114,7 @@ async function execute(body) {
     const op = await ordemRepo.findById(opIdResolved);
     if (!op) return { status: 404, body: { erro: 'OP não encontrada' } };
 
-    // consumo sÃ³ se o processo "controlador" estiver em montagem
+    // consumo so se o processo "controlador" estiver em montagem
     if (op.status !== 'montagem') {
       return {
         status: 400,
@@ -135,7 +135,7 @@ async function execute(body) {
     }
 
     // =========================
-    // ValidaÃ§Ã£o BOM "inteligente"
+    // Validacao BOM "inteligente"
     // =========================
     let valido = false;
 
@@ -144,13 +144,13 @@ async function execute(body) {
       valido = await estruturaTemItem(codProdutoOmieResolved, empresa, codigoPeca);
     }
 
-    // 2) se nÃ£o bateu, tenta BOM da placa informada (se existir)
+    // 2) se nao bateu, tenta BOM da placa informada (se existir)
     if (!valido && codProdutoOmiePlaca) {
       valido = await estruturaTemItem(codProdutoOmiePlaca, empresa, codigoPeca);
     }
 
-    // 3) se ainda nÃ£o bateu e o usuÃ¡rio chamou por PF (sem subprodutoId),
-    // tenta descobrir automaticamente qual placa vinculada contÃ©m essa peÃ§a no BOM
+    // 3) se ainda nao bateu e o usuario chamou por PF (sem subprodutoId),
+    // tenta descobrir automaticamente qual placa vinculada contem essa peca no BOM
     if (!valido && serieProdFinalId && !subprodutoId) {
       const placas = await prisma.subproduto.findMany({
         where: { serieProdFinalId: String(serieProdFinalId) },
@@ -194,15 +194,15 @@ async function execute(body) {
       return { status: 400, body: { erro: 'Peça não pertence ao BOM do produto nem da placa' } };
     }
 
-    const consumoAtivoMesmoContexto = await consumoPecaRepo.findAtivoPorContexto({
+    const consumosAtivosMesmoContexto = await consumoPecaRepo.findAtivosPorContexto({
       codigoPeca: String(codigoPeca),
       subprodutoId: contextoSubprodutoId,
       serieProdFinalId: contextoserieProdFinalId
     });
 
     const consumo = await prisma.$transaction(async (tx) => {
-      if (consumoAtivoMesmoContexto) {
-        await consumoPecaRepo.update(tx, consumoAtivoMesmoContexto.id, { fimEm: new Date() });
+      for (const ativo of consumosAtivosMesmoContexto) {
+        await consumoPecaRepo.update(tx, ativo.id, { fimEm: new Date() });
       }
 
       return consumoPecaRepo.create(tx, {
@@ -231,8 +231,8 @@ async function execute(body) {
       body: {
         ok: true,
         consumo: consumoRetorno,
-        substituicaoAutomatica: !!consumoAtivoMesmoContexto,
-        consumoAnteriorEncerradoId: consumoAtivoMesmoContexto?.id || null
+        substituicaoAutomatica: consumosAtivosMesmoContexto.length > 0,
+        consumosAnterioresEncerradosIds: consumosAtivosMesmoContexto.map((c) => c.id)
       }
     };
   } catch (err) {

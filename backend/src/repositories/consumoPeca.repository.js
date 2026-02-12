@@ -48,6 +48,24 @@ async function findAtivoPorContexto({ codigoPeca, subprodutoId, serieProdFinalId
   });
 }
 
+async function findAtivosPorContexto({ codigoPeca, subprodutoId, serieProdFinalId }) {
+  const codigo = String(codigoPeca || '').trim();
+  if (!codigo) return [];
+
+  const spId = subprodutoId ? String(subprodutoId).trim() : null;
+  const pfId = serieProdFinalId ? String(serieProdFinalId).trim() : null;
+
+  return prisma.consumoPeca.findMany({
+    where: {
+      codigoPeca: codigo,
+      fimEm: null,
+      subprodutoId: spId || undefined,
+      serieProdFinalId: pfId || undefined
+    },
+    orderBy: { inicioEm: 'desc' }
+  });
+}
+
 async function findMany({ opId, subprodutoId, serieProdFinalId }) {
   return prisma.consumoPeca.findMany({
     where: {
@@ -76,6 +94,7 @@ module.exports = {
   findQrAtivo,
   findQrIdAtivo,
   findAtivoPorContexto,
+  findAtivosPorContexto,
   findById,
   findMany,
   create,

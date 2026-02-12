@@ -43,6 +43,14 @@ function calcularTempoPorEtapaMs(eventos) {
     }
   }
 
+  const agora = new Date();
+  for (const etapa of Object.keys(inicioPorEtapa)) {
+    if (inicioPorEtapa[etapa]) {
+      const diff = calcularMsDentroJornada(inicioPorEtapa[etapa], agora);
+      if (diff > 0) temposMs[etapa] += diff;
+    }
+  }
+
   return temposMs;
 }
 

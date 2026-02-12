@@ -43,6 +43,14 @@ function calcularTempoPorEtapaMs(eventos) {
     }
   }
 
+  const agora = new Date();
+  for (const etapa of Object.keys(inicioPorEtapa)) {
+    if (inicioPorEtapa[etapa]) {
+      const diff = calcularMsDentroJornada(inicioPorEtapa[etapa], agora);
+      if (diff > 0) temposMs[etapa] += diff;
+    }
+  }
+
   return temposMs;
 }
 
@@ -118,8 +126,7 @@ async function execute({ params }) {
             etiquetaId: sp.etiquetaId || null,
             codigoSubproduto: sp.codigoSubproduto || null,
             descricao: descricaoPorCodigo[String(sp.codigoSubproduto || '').trim()] || null,
-            opNumeroSubproduto: sp.opNumeroSubproduto || null,
-            criadoEm: formatDateTimeBr(sp.criadoEm, { withDash: true })
+            opNumeroSubproduto: sp.opNumeroSubproduto || null
           })),
 
           pecasConsumidas: (pf.consumosPeca || []).map((c) => ({

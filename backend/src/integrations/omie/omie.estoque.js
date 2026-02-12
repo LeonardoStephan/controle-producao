@@ -1,11 +1,26 @@
 const axios = require('axios');
 const { getOmieCredenciais } = require('../../config/omie.config');
+const { getBrParts } = require('../../utils/timeZoneBr');
 
 function formatarDataOmie(date = new Date()) {
-  const dd = String(date.getDate()).padStart(2, '0');
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const yyyy = date.getFullYear();
+  const dt = getBrParts(date) || {
+    day: date.getDate(),
+    month: date.getMonth() + 1,
+    year: date.getFullYear()
+  };
+
+  const dd = String(dt.day).padStart(2, '0');
+  const mm = String(dt.month).padStart(2, '0');
+  const yyyy = dt.year;
   return `${dd}/${mm}/${yyyy}`;
+}
+
+function normalizarTexto(str) {
+  return String(str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
 async function consultarEstoquePadrao(codProdutoOmie, empresa) {
@@ -32,12 +47,11 @@ async function consultarEstoquePadrao(codProdutoOmie, empresa) {
     );
 
     const lista = response.data?.listaEstoque || [];
+    const alvo = normalizarTexto('Local de Estoque Padrao');
 
-    return (
-      lista.find((e) => e.cDescricaoLocal === 'Local de Estoque Padrão') || null
-    );
+    return lista.find((e) => normalizarTexto(e.cDescricaoLocal) === alvo) || null;
   } catch (err) {
-    console.error('❌ Omie ObterEstoqueProduto:', err.response?.data || err.message);
+    console.error('Omie ObterEstoqueProduto:', err.response?.data || err.message);
     return null;
   }
 }
