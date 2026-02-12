@@ -19,7 +19,7 @@ Trilha ponta a ponta:
 - Node.js + Express
 - Prisma ORM
 - MySQL
-- Integrações Omie e ViaOnda(Etiquetadora dos números de série)
+- Integracoes Omie e ViaOnda (etiquetadora dos numeros de serie)
 
 ## Estrutura do Projeto
 
@@ -108,6 +108,7 @@ Regras importantes:
 - QR validado por codigo da peca.
 - `qrId` salvo com base no ultimo trecho do QR (ex.: `ID:177038...`).
 - Bloqueio de duplicidade por `qrCode` e por `qrId`.
+- Se ja existir a mesma `codigoPeca` ativa no mesmo contexto (PF/subproduto), o sistema encerra a anterior (`fimEm`) e registra a nova automaticamente.
 
 ## Expedicao
 
@@ -127,6 +128,7 @@ Observacoes:
 - `scan-serie` usa `:id` da expedicao na URL.
 - Foto 1:1 usa `:id` de `expedicaoSerieId` na URL.
 - Finalizacao usa a empresa da propria expedicao como fonte principal.
+- `GET /expedicao/fotos-gerais/:expedicaoId` retorna tambem `cliente` e `fotosSerie` (fotos 1:1 com descricao do produto quando disponivel).
 
 ## Ajustes Recentes
 

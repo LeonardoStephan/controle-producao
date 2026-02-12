@@ -9,6 +9,33 @@ function cacheKey(codProduto, empresa) {
   return `${String(empresa || '').trim()}::${String(codProduto || '').trim()}`;
 }
 
+function extrairPayloadProduto(data) {
+  if (!data || typeof data !== 'object') return null;
+  return data.produto_cadastro || data.produto || data;
+}
+
+function extrairCodigoProduto(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  return String(
+    payload.codigo ||
+      payload.codigo_produto ||
+      payload.cCodigo ||
+      payload.codigo_item ||
+      ''
+  ).trim();
+}
+
+function extrairDescricaoProduto(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  return String(
+    payload.descricao ||
+      payload.descricao_produto ||
+      payload.nome ||
+      payload.nome_fantasia ||
+      ''
+  ).trim();
+}
+
 async function validarProdutoExisteNoOmie(codProduto, empresa) {
   const cod = String(codProduto || '').trim();
   const emp = String(empresa || '').trim();
@@ -27,13 +54,11 @@ async function validarProdutoExisteNoOmie(codProduto, empresa) {
     throw new Error('FALHA_OMIE_CONSULTAR_PRODUTO');
   }
 
-  const data = resp.data;
-  if (!data) return false;
+  const payload = extrairPayloadProduto(resp.data);
+  const codigoResp = extrairCodigoProduto(payload);
+  if (!codigoResp) return false;
 
-  if (String(data.codigo || '').trim() === cod) return true;
-  if (data.codigo_produto) return true;
-
-  return true;
+  return codigoResp === cod;
 }
 
 async function consultarProdutoNoOmie(codProduto, empresa) {
@@ -59,19 +84,14 @@ async function consultarProdutoNoOmie(codProduto, empresa) {
     throw new Error('FALHA_OMIE_CONSULTAR_PRODUTO');
   }
 
-  const data = resp.data || {};
-  const codigo = String(data.codigo || data.codigo_produto || '').trim() || cod;
+  const payload = extrairPayloadProduto(resp.data);
+  const codigoResp = extrairCodigoProduto(payload);
+  if (!codigoResp) return null;
 
-  const descricao = String(
-    data.descricao ||
-      data.descricao_produto ||
-      data.nome ||
-      data.nome_fantasia ||
-      ''
-  ).trim();
+  const descricao = extrairDescricaoProduto(payload);
 
   const value = {
-    codigo,
+    codigo: codigoResp,
     descricao: descricao || null
   };
 

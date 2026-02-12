@@ -1,13 +1,12 @@
 const axios = require('axios');
 const { getOmieCredenciais } = require('../../config/omie.config');
 
-function normalizarErroOmie(err) {
-  const data = err.response?.data;
+function normalizarErroOmieData(data) {
   const fault = String(data?.faultstring || '').toLowerCase();
   const statusCode = data?.error?.status_code;
 
   return {
-    raw: data || err.message,
+    raw: data,
     statusCode,
     fault,
     isNotFound:
@@ -19,6 +18,12 @@ function normalizarErroOmie(err) {
       fault.includes('não existe') ||
       fault.includes('nao existe')
   };
+}
+
+function normalizarErroOmie(err) {
+  const data = err.response?.data;
+  if (data) return normalizarErroOmieData(data);
+  return { raw: err.message, statusCode: null, fault: '', isNotFound: false };
 }
 
 async function postOmie({ endpoint, call, param, empresa, timeout = 40000 }) {
@@ -36,7 +41,14 @@ async function postOmie({ endpoint, call, param, empresa, timeout = 40000 }) {
       { timeout }
     );
 
-    return { ok: true, data: resp.data };
+    const data = resp.data;
+
+    // Omie pode retornar erro de negócio com HTTP 200 (faultcode/faultstring no body).
+    if (data && (data.faultcode || data.faultstring)) {
+      return { ok: false, error: normalizarErroOmieData(data) };
+    }
+
+    return { ok: true, data };
   } catch (err) {
     const e = normalizarErroOmie(err);
     return { ok: false, error: e };

@@ -194,7 +194,17 @@ async function execute(body) {
       return { status: 400, body: { erro: 'Peça não pertence ao BOM do produto nem da placa' } };
     }
 
+    const consumoAtivoMesmoContexto = await consumoPecaRepo.findAtivoPorContexto({
+      codigoPeca: String(codigoPeca),
+      subprodutoId: contextoSubprodutoId,
+      serieProdFinalId: contextoserieProdFinalId
+    });
+
     const consumo = await prisma.$transaction(async (tx) => {
+      if (consumoAtivoMesmoContexto) {
+        await consumoPecaRepo.update(tx, consumoAtivoMesmoContexto.id, { fimEm: new Date() });
+      }
+
       return consumoPecaRepo.create(tx, {
         id: crypto.randomUUID(),
         opId: opIdResolved,
@@ -212,10 +222,19 @@ async function execute(body) {
       codigoPeca: consumo.codigoPeca,
       qrCode: consumo.qrCode,
       qrId: consumo.qrId,
-      subprodutoId: consumo.subprodutoId
+      subprodutoId: consumo.subprodutoId,
+      serieProdFinalId: consumo.serieProdFinalId
     };
 
-    return { status: 200, body: { ok: true, consumo: consumoRetorno } };
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        consumo: consumoRetorno,
+        substituicaoAutomatica: !!consumoAtivoMesmoContexto,
+        consumoAnteriorEncerradoId: consumoAtivoMesmoContexto?.id || null
+      }
+    };
   } catch (err) {
     console.error(err);
     return { status: 500, body: { erro: 'Erro interno ao consumir peça' } };
