@@ -18,6 +18,7 @@ model OrdemProducao {
   descricaoProduto    String
   quantidadeProduzida Int
   status              String
+  version             Int      @default(0)
   criadoEm            DateTime @default(now())
 
   eventos        EventoOP[]
@@ -104,8 +105,10 @@ model ConsumoPeca {
 model Expedicao {
   id            String    @id
   numeroPedido  String
+  chaveAtiva    String?   @unique
   empresa       String?
   status        String
+  version       Int       @default(0)
   funcionarioId String
   iniciadoEm    DateTime  @default(now())
   finalizadoEm  DateTime?

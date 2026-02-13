@@ -52,6 +52,14 @@ async function create(data) {
   return prisma.produtoFinal.create({ data });
 }
 
+async function listSeriesByOpId(opId) {
+  const rows = await prisma.produtoFinal.findMany({
+    where: { opId: String(opId) },
+    select: { serie: true }
+  });
+  return rows.map((r) => String(r.serie).trim()).filter(Boolean);
+}
+
 async function findFirstByCodProdutoOmie(codProdutoOmie, select) {
   return prisma.produtoFinal.findFirst({
     where: { codProdutoOmie: String(codProdutoOmie) },
@@ -68,5 +76,6 @@ module.exports = {
   findFirstCodProdutoOmieDaOp,
   findBySerie,
   create,
+  listSeriesByOpId,
   findFirstByCodProdutoOmie
 };

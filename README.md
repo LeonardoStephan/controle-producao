@@ -132,6 +132,11 @@ Observacoes:
 
 ## Ajustes Recentes
 
+- Lock otimista em OP com campo `version` e controle de concorrencia em:
+  - `POST /op/:id/iniciar/:etapa`
+  - `POST /op/:id/eventos`
+  - `POST /op/:id/finalizar/:etapa`
+- Em conflito de concorrencia nesses endpoints, retorno padrao: `409`.
 - Inicio manual da proxima etapa de OP (`POST /op/:id/iniciar/:etapa`).
 - `finalizar/:etapa` nao cria mais inicio automatico da proxima etapa.
 - Tempos por etapa com segundos (`5h30m10s`).
@@ -142,6 +147,80 @@ Observacoes:
   - `{ "ok": true, "status": "finalizada" }`
 - Persistencia de datas em UTC no banco e exibicao em horario do Brasil (`America/Sao_Paulo`) na API de resumo/rastreabilidade.
 
+## Concorrencia Multiusuario (Ja Implementado)
+
+Esta secao resume o que o sistema ja faz para suportar uso simultaneo (3+ usuarios) com consistencia de dados.
+
+### Objetivo Atendido
+
+- Evitar duas transicoes concorrentes na mesma OP.
+- Evitar duplicidade de consumo no mesmo contexto.
+- Evitar scan de serie duplicado na expedicao.
+- Reduzir corridas entre leitura de estado e gravacao.
+
+### Estrategia Implementada
+
+1. Regras de unicidade no banco para pontos criticos.
+2. Operacoes criticas em transacao.
+3. Lock otimista por `version` em OP e expedicao.
+4. Padronizacao de conflito com `409` e payload consistente.
+5. Testes automatizados de concorrencia e smoke de carga.
+
+### Escopo Implementado
+
+Schema/migracoes:
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/*/migration.sql`
+
+Usecases principais com hardening de concorrencia:
+
+- `backend/src/usecases/op/iniciarEtapa.usecase.js`
+- `backend/src/usecases/op/adicionarEvento.usecase.js`
+- `backend/src/usecases/op/finalizarEtapa.usecase.js`
+- `backend/src/usecases/op/iniciarOp.usecase.js`
+- `backend/src/usecases/subproduto/registrarSubproduto.usecase.js`
+- `backend/src/usecases/subproduto/consumirSubproduto.usecase.js`
+- `backend/src/usecases/produtoFinal/criarProdutoFinal.usecase.js`
+- `backend/src/usecases/peca/consumirPeca.usecase.js`
+- `backend/src/usecases/expedicao/iniciarExpedicao.usecase.js`
+- `backend/src/usecases/expedicao/adicionarEventoExpedicao.usecase.js`
+- `backend/src/usecases/expedicao/scanSerie.usecase.js`
+- `backend/src/usecases/expedicao/finalizarExpedicao.usecase.js`
+
+Utilitarios/regras:
+
+- `backend/src/utils/httpErrors.js`
+
+### Comportamento Atual de Conflito
+
+- Endpoints criticos retornam `409 Conflict` em disputa concorrente.
+- Payload padrao de conflito:
+  - `erro`
+  - `code: "CONCURRENCY_CONFLICT"`
+  - `detalhe`
+
+### Status Funcional Consolidado
+
+- [x] Lock otimista por `version` em OP.
+- [x] Lock otimista por `version` em expedicao.
+- [x] Fluxos criticos com transacao.
+- [x] Tratamento de `P2002` nos pontos sensiveis (idempotencia/conflito amigavel).
+- [x] Consumo de peca sem duas ativas do mesmo codigo/contexto.
+- [x] Scan de serie blindado para corrida simultanea.
+- [x] Inicio/finalizacao/eventos protegidos contra corrida.
+
+### Testes Implementados
+
+- Testes automatizados de concorrencia (Jest) para OP, subproduto e expedicao.
+- Script de carga basica (smoke) com `autocannon`.
+
+### Criterios Atendidos
+
+- Nao ha dupla transicao valida conhecida da mesma OP por corrida.
+- Nao ha duas pecas ativas do mesmo codigo/contexto apos concorrencia.
+- Nao ha scan duplicado aceito da mesma serie em corrida.
+- Endpoints criticos respondem `409` de forma consistente.
 ## Execucao Local
 
 No diretorio `backend/`:
@@ -152,8 +231,13 @@ No diretorio `backend/`:
    - `backend/.env`
 3. Rodar migracoes (se necessario):
    - `npx prisma migrate deploy`
+   - se estiver em dev: `npx prisma migrate dev`
 4. Subir API:
    - `npm run dev`
+5. Rodar testes automatizados:
+   - `npm test`
+6. Rodar carga basica (smoke):
+   - `npm run test:load`
 
 ## Testes de Fluxo (Postman)
 

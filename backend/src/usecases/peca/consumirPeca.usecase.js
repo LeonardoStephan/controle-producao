@@ -10,6 +10,7 @@ const consumoPecaRepo = require('../../repositories/consumoPeca.repository');
 
 const { extrairCodigoDaPecaDoQr, extrairQrId } = require('../../utils/pecaQr');
 const { estruturaTemItem } = require('../../integrations/omie/omie.estrutura');
+const { conflictResponse } = require('../../utils/httpErrors');
 
 async function execute(body) {
   const {
@@ -236,6 +237,13 @@ async function execute(body) {
       }
     };
   } catch (err) {
+    if (err?.code === 'P2002') {
+      return conflictResponse('Conflito de concorrencia ao consumir peca. QR ou contexto ja foi atualizado por outro usuario.', {
+        recurso: 'ConsumoPeca',
+        codigoPeca: String(body?.codigoPeca || ''),
+        qrId: extrairQrId(String(body?.qrCode || '')) || null
+      });
+    }
     console.error(err);
     return { status: 500, body: { erro: 'Erro interno ao consumir peça' } };
   }

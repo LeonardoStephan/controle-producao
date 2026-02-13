@@ -1,8 +1,9 @@
 const crypto = require('crypto');
+const { prisma } = require('../../database/prisma');
 
 const ordemRepo = require('../../repositories/ordemProducao.repository');
-const eventoRepo = require('../../repositories/eventoOP.repository');
 const { FLUXO_ETAPAS } = require('../../domain/fluxoOp');
+const { conflictResponse, throwBusiness } = require('../../utils/httpErrors');
 
 async function execute({ params = {}, body = {} }) {
   const { id, etapa } = params;
@@ -29,32 +30,59 @@ async function execute({ params = {}, body = {} }) {
       body: { erro: `Nao e possivel iniciar ${etapa}. Etapa atual: ${op.status}` }
     };
   }
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.ordemProducao.updateMany({
+        where: { id: String(id), status: etapa, version: op.version },
+        data: { version: { increment: 1 } }
+      });
 
-  const ultimoEvento = await eventoRepo.findUltimoEvento(String(id), etapa);
+      if (claimed.count === 0) {
+        throwBusiness(409, 'Conflito de concorrencia: OP foi alterada por outro usuario. Atualize e tente novamente.', {
+          code: 'CONCURRENCY_CONFLICT',
+          detalhe: { recurso: 'OrdemProducao', opId: String(id), etapa: String(etapa) }
+        });
+      }
 
-  if (!ultimoEvento) {
-    await eventoRepo.create({
-      id: crypto.randomUUID(),
-      opId: String(id),
-      etapa,
-      tipo: 'inicio',
-      funcionarioId: String(funcionarioId)
+      const ultimoEvento = await tx.eventoOP.findFirst({
+        where: {
+          opId: String(id),
+          etapa: String(etapa),
+          tipo: { in: ['inicio', 'pausa', 'retorno', 'fim'] }
+        },
+        orderBy: { criadoEm: 'desc' }
+      });
+
+      if (!ultimoEvento) {
+        await tx.eventoOP.create({
+          data: {
+            id: crypto.randomUUID(),
+            opId: String(id),
+            etapa,
+            tipo: 'inicio',
+            funcionarioId: String(funcionarioId)
+          }
+        });
+        return { status: 200, body: { ok: true, etapaIniciada: etapa } };
+      }
+
+      if (ultimoEvento.tipo === 'inicio' || ultimoEvento.tipo === 'retorno') {
+        throwBusiness(400, `Etapa ${etapa} ja esta iniciada`);
+      }
+
+      if (ultimoEvento.tipo === 'pausa') {
+        throwBusiness(400, `Etapa ${etapa} esta pausada. Use retorno`);
+      }
+
+      throwBusiness(400, `Nao e possivel iniciar ${etapa} apos evento ${ultimoEvento.tipo}`);
     });
-    return { status: 200, body: { ok: true, etapaIniciada: etapa } };
-  }
 
-  if (ultimoEvento.tipo === 'inicio' || ultimoEvento.tipo === 'retorno') {
-    return { status: 400, body: { erro: `Etapa ${etapa} ja esta iniciada` } };
+    return result;
+  } catch (err) {
+    if (err?.isBusiness) return { status: err.status, body: err.body };
+    console.error('Erro iniciarEtapa:', err);
+    return { status: 500, body: { erro: 'Erro interno ao iniciar etapa' } };
   }
-
-  if (ultimoEvento.tipo === 'pausa') {
-    return { status: 400, body: { erro: `Etapa ${etapa} esta pausada. Use retorno` } };
-  }
-
-  return {
-    status: 400,
-    body: { erro: `Nao e possivel iniciar ${etapa} apos evento ${ultimoEvento.tipo}` }
-  };
 }
 
 module.exports = { execute };

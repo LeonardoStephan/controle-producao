@@ -9,6 +9,7 @@ const subprodutoRepo = require('../../repositories/subproduto.repository');
 
 const { FLUXO_ETAPAS } = require('../../domain/fluxoOp');
 const { consultarEstruturaProduto, extrairSubprodutosDoBOM } = require('../../integrations/omie/omie.estrutura');
+const { conflictResponse } = require('../../utils/httpErrors');
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -201,10 +202,19 @@ async function execute({ params = {}, body = {} }) {
         }
       });
 
-      await tx.ordemProducao.update({
-        where: { id: String(id) },
-        data: { status: proximaEtapa }
+      const claimed = await tx.ordemProducao.updateMany({
+        where: { id: String(id), status: etapa, version: op.version },
+        data: {
+          status: proximaEtapa,
+          version: { increment: 1 }
+        }
       });
+
+      if (claimed.count === 0) {
+        const err = new Error('CONCURRENCY_CONFLICT');
+        err.code = 'CONCURRENCY_CONFLICT';
+        throw err;
+      }
     });
 
     return {
@@ -217,6 +227,12 @@ async function execute({ params = {}, body = {} }) {
       }
     };
   } catch (err) {
+    if (err?.code === 'CONCURRENCY_CONFLICT') {
+      return conflictResponse(
+        'Conflito de concorrencia: OP foi alterada por outro usuario. Atualize e tente novamente.',
+        { recurso: 'OrdemProducao', opId: String(id), etapa: String(etapa) }
+      );
+    }
     console.error('Erro ao finalizar etapa:', err);
     return { status: 500, body: { erro: 'Erro interno ao finalizar etapa' } };
   }

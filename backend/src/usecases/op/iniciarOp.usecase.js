@@ -2,13 +2,14 @@ const crypto = require('crypto');
 const ordemRepo = require('../../repositories/ordemProducao.repository');
 const eventoRepo = require('../../repositories/eventoOP.repository');
 const { buscarOpNaAPI } = require('../../integrations/viaonda/viaonda.op');
+const { conflictResponse } = require('../../utils/httpErrors');
 
 async function execute(body) {
   const { numeroOP, empresa, funcionarioId } = body;
 
   if (!numeroOP || !empresa || !funcionarioId) {
     return {
-      status: 400, body: { erro: 'numeroOP, empresa e funcionarioId são obrigatórios' }
+      status: 400, body: { erro: 'numeroOP, empresa e funcionarioId sao obrigatorios' }
     };
   }
 
@@ -24,36 +25,50 @@ async function execute(body) {
   }
 
   if (!externa) {
-    return { status: 404, body: { erro: 'OP não existe na API externa' } };
+    return { status: 404, body: { erro: 'OP nao existe na API externa' } };
   }
 
   let op = await ordemRepo.findByNumeroOP(numero);
 
-  // não permite trocar empresa
-  if (op && op.empresa !== emp) {
-    return {
-      status: 400,
-      body: { erro: `OP já pertence à empresa '${op.empresa}'. Você enviou '${emp}'.`, op }
-    };
-  }
-
-  // não reinicia se já avançou
-  if (op && op.status !== 'montagem') {
-    return {
-      status: 400,
-      body: { erro: `OP já está em '${op.status}'. Não é possível iniciar montagem novamente.`, op }
-    };
-  }
-
   if (!op) {
-    op = await ordemRepo.create({
-      id: crypto.randomUUID(),
-      numeroOP: numero,
-      descricaoProduto: externa.descricao_produto || '',
-      quantidadeProduzida: Number(externa.quantidade_total || 0) || 0,
-      status: 'montagem',
-      empresa: emp
-    });
+    try {
+      op = await ordemRepo.create({
+        id: crypto.randomUUID(),
+        numeroOP: numero,
+        descricaoProduto: externa.descricao_produto || '',
+        quantidadeProduzida: Number(externa.quantidade_total || 0) || 0,
+        status: 'montagem',
+        empresa: emp
+      });
+    } catch (err) {
+      if (err?.code === 'P2002') {
+        op = await ordemRepo.findByNumeroOP(numero);
+        if (!op) {
+          return conflictResponse('Conflito de concorrencia ao iniciar OP. Tente novamente.', {
+            recurso: 'OrdemProducao',
+            numeroOP: numero
+          });
+        }
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  // nao permite trocar empresa
+  if (op.empresa !== emp) {
+    return {
+      status: 400,
+      body: { erro: `OP ja pertence a empresa '${op.empresa}'. Voce enviou '${emp}'.`, op }
+    };
+  }
+
+  // nao reinicia se ja avancou
+  if (op.status !== 'montagem') {
+    return {
+      status: 400,
+      body: { erro: `OP ja esta em '${op.status}'. Nao e possivel iniciar montagem novamente.`, op }
+    };
   }
 
   const ultimoEventoMontagem = await eventoRepo.findUltimoEvento(op.id, 'montagem');

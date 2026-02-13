@@ -33,6 +33,14 @@ async function findById(id) {
   return prisma.subproduto.findUnique({ where: { id: String(id) } });
 }
 
+async function listEtiquetasByOpId(opId) {
+  const rows = await prisma.subproduto.findMany({
+    where: { opId: String(opId) },
+    select: { etiquetaId: true }
+  });
+  return rows.map((r) => String(r.etiquetaId).trim()).filter(Boolean);
+}
+
 async function create(data) {
   return prisma.subproduto.create({ data });
 }
@@ -73,5 +81,6 @@ module.exports = {
   updateByEtiquetaId,
   countRegistradosNaOp,
   countConsumidosNaOpAgrupado,
-  findById
+  findById,
+  listEtiquetasByOpId
 };
