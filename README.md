@@ -221,6 +221,41 @@ Utilitarios/regras:
 - Nao ha duas pecas ativas do mesmo codigo/contexto apos concorrencia.
 - Nao ha scan duplicado aceito da mesma serie em corrida.
 - Endpoints criticos respondem `409` de forma consistente.
+
+## Views SQL (Historico)
+
+As views abaixo foram criadas para consultas futuras no MySQL (horarios e ordenacao de listagens):
+
+### Views de horario UTC x BR
+
+- `vw_eventoop_horarios`
+- `vw_consumopeca_horarios`
+- `vw_expedicao_horarios`
+- `vw_eventoexpedicao_horarios`
+- `vw_fotoexpedicao_horarios`
+- `vw_fotoexpedicaogeral_horarios`
+
+Consultas prontas:
+
+- `SELECT * FROM vw_eventoop_horarios ORDER BY criadoEm_utc DESC LIMIT 50;`
+- `SELECT * FROM vw_consumopeca_horarios ORDER BY inicioEm_utc DESC LIMIT 50;`
+- `SELECT * FROM vw_expedicao_horarios ORDER BY iniciadoEm_utc DESC LIMIT 50;`
+- `SELECT * FROM vw_eventoexpedicao_horarios ORDER BY criadoEm_utc DESC LIMIT 50;`
+- `SELECT * FROM vw_fotoexpedicao_horarios ORDER BY criadoEm_utc DESC LIMIT 50;`
+- `SELECT * FROM vw_fotoexpedicaogeral_horarios ORDER BY criadoEm_utc DESC LIMIT 50;`
+
+### Views de ordenacao
+
+- `vw_subproduto_ordenado`
+- `vw_produtofinal_ordenado`
+- `vw_expedicao_ordenada`
+
+Consultas prontas:
+
+- `SELECT * FROM vw_subproduto_ordenado;`
+- `SELECT * FROM vw_produtofinal_ordenado;`
+- `SELECT * FROM vw_expedicao_ordenada;`
+
 ## Execucao Local
 
 No diretorio `backend/`:
