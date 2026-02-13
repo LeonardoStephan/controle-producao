@@ -16,4 +16,7 @@ app.use('/health', require('./routes/health.routes'));
 app.use('/expedicao', require('./routes/expedicao.routes'));
 app.use('/expedicao/fotos-gerais', require('./routes/fotoExpedicaoGeral.routes'));
 
+// ROTAS MANUTENCAO
+app.use('/manutencao', require('./routes/manutencao.routes'));
+
 module.exports = app;

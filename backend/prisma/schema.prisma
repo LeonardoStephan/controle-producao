@@ -49,6 +49,7 @@ model ProdutoFinal {
   subprodutos     Subproduto[]
   consumosPeca    ConsumoPeca[]
   expedicoesSerie ExpedicaoSerie[]
+  manutencoes     Manutencao[]
 }
 
 model Subproduto {
@@ -166,4 +167,74 @@ model FotoExpedicaoGeral {
   expedicao Expedicao @relation(fields: [expedicaoId], references: [id])
 
   @@index([expedicaoId])
+}
+
+/////////////////////////////////////////////////////////
+////////////////// PROCESSO MANUTENCAO //////////////////
+/////////////////////////////////////////////////////////
+
+model Manutencao {
+  id                      String    @id
+  numeroOS                String?   @unique
+  empresa                 String
+  status                  String
+  version                 Int       @default(0)
+  funcionarioAberturaId   String
+  funcionarioAtualId      String?
+  serieProduto            String
+  codProdutoOmie          String?
+  clienteNome             String?
+  defeitoRelatado         String?
+  diagnostico             String?
+  emGarantia              Boolean?
+  aprovadoOrcamento       Boolean?
+  dataChegadaTransportadora DateTime?
+  dataEntrada             DateTime  @default(now())
+  dataAprovacao           DateTime?
+  dataFinalizacao         DateTime?
+  pesoKg                  Float?
+  volumeM3                Float?
+  observacao              String?
+  criadoEm                DateTime  @default(now())
+  atualizadoEm            DateTime  @updatedAt
+
+  serieProdFinalId        String?
+
+  produtoFinal            ProdutoFinal?         @relation(fields: [serieProdFinalId], references: [id])
+  eventos                 ManutencaoEvento[]
+  pecasTrocadas           ManutencaoPecaTrocada[]
+
+  @@index([serieProduto])
+  @@index([status])
+  @@index([dataEntrada])
+}
+
+model ManutencaoEvento {
+  id            String   @id
+  manutencaoId  String
+  tipo          String
+  funcionarioId String
+  observacao    String?
+  criadoEm      DateTime @default(now())
+
+  manutencao Manutencao @relation(fields: [manutencaoId], references: [id])
+
+  @@index([manutencaoId, criadoEm])
+}
+
+model ManutencaoPecaTrocada {
+  id            String   @id
+  manutencaoId  String
+  codigoPeca    String
+  qrCode        String?
+  qrId          String?
+  quantidade    Int      @default(1)
+  funcionarioId String
+  criadoEm      DateTime @default(now())
+
+  manutencao Manutencao @relation(fields: [manutencaoId], references: [id])
+
+  @@index([manutencaoId, criadoEm])
+  @@index([codigoPeca])
+  @@index([qrId])
 }

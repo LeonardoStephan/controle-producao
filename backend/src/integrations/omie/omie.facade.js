@@ -3,6 +3,7 @@ const { consultarEstoquePadrao } = require('./omie.estoque');
 const { consultarEstruturaProduto, extrairSubprodutosDoBOM, 
   obterObrigatoriosSubprodutosDoBOM, estruturaTemItem } = require('./omie.estrutura');
 const { validarProdutoExisteNoOmie } = require('./omie.produto');
+const { consultarOrdemServico, baixarPecaEstoqueOmie } = require('./omie.os');
 
 module.exports = {
   consultarPedidoVenda,
@@ -13,5 +14,8 @@ module.exports = {
   obterObrigatoriosSubprodutosDoBOM,
   estruturaTemItem,
 
-  validarProdutoExisteNoOmie
+  validarProdutoExisteNoOmie,
+
+  consultarOrdemServico,
+  baixarPecaEstoqueOmie
 };
