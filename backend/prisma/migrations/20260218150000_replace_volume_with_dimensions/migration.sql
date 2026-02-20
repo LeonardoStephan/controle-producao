@@ -1,0 +1,8 @@
+ALTER TABLE `Manutencao`
+ADD COLUMN `altura` DOUBLE NULL,
+ADD COLUMN `largura` DOUBLE NULL,
+ADD COLUMN `comprimento` DOUBLE NULL;
+
+ALTER TABLE `Manutencao`
+DROP COLUMN `volumeM3`;
+

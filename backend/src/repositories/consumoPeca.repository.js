@@ -1,4 +1,3 @@
-// src/repositories/consumoPeca.repository.js
 const { prisma } = require('../database/prisma');
 
 async function findQrAtivo(qrCode) {
@@ -19,6 +18,15 @@ async function findQrIdAtivo(qrId) {
   });
 }
 
+async function findQrIdAny(qrId) {
+  const id = String(qrId || '').trim();
+  if (!id) return null;
+
+  return prisma.consumoPeca.findFirst({
+    where: { qrId: id }
+  });
+}
+
 async function findById(id) {
   return prisma.consumoPeca.findUnique({
     where: { id: String(id) }
@@ -27,8 +35,7 @@ async function findById(id) {
 
 /**
  * Acha o consumo ATIVO (fimEm null) para uma peça dentro do contexto informado.
- * - Contexto pode ser subprodutoId OU serieProdFinalId.
- * - Se nenhum contexto for passado, procura só por codigoPeca (não recomendado, mas não bloqueia).
+ * Se nenhum contexto for passado, procura só por codigoPeca (não recomendado, mas não bloqueia).
  */
 async function findAtivoPorContexto({ codigoPeca, subprodutoId, serieProdFinalId }) {
   const codigo = String(codigoPeca || '').trim();
@@ -66,15 +73,20 @@ async function findAtivosPorContexto({ codigoPeca, subprodutoId, serieProdFinalI
   });
 }
 
-async function findMany({ opId, subprodutoId, serieProdFinalId }) {
-  return prisma.consumoPeca.findMany({
+async function existeHistoricoComQr(codigoPeca) {
+  const codigo = String(codigoPeca || '').trim();
+  if (!codigo) return false;
+
+  // Em ConsumoPeca, qrCode é obrigatório no schema.
+  // Logo, qualquer histórico desta peça aqui implica rastreio por QR no processo de produção.
+  const row = await prisma.consumoPeca.findFirst({
     where: {
-      opId: opId || undefined,
-      subprodutoId: subprodutoId || undefined,
-      serieProdFinalId: serieProdFinalId || undefined
+      codigoPeca: codigo
     },
-    orderBy: { inicioEm: 'asc' }
+    select: { id: true }
   });
+
+  return Boolean(row);
 }
 
 async function create(tx, data) {
@@ -93,10 +105,11 @@ async function update(tx, id, data) {
 module.exports = {
   findQrAtivo,
   findQrIdAtivo,
+  findQrIdAny,
   findAtivoPorContexto,
   findAtivosPorContexto,
   findById,
-  findMany,
+  existeHistoricoComQr,
   create,
   update
 };

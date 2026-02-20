@@ -20,8 +20,13 @@ jest.mock('../src/domain/expedicao.rules', () => ({
   produtoPossuiSerieNoSistema: jest.fn()
 }));
 
+jest.mock('../src/repositories/funcionario.repository', () => ({
+  findByCracha: jest.fn()
+}));
+
 const { prisma } = require('../src/database/prisma');
 const expedicaoRepo = require('../src/repositories/expedicao.repository');
+const funcionarioRepo = require('../src/repositories/funcionario.repository');
 const { consultarPedidoVenda } = require('../src/integrations/omie/omie.facade');
 const { produtoPossuiSerieNoSistema } = require('../src/domain/expedicao.rules');
 const finalizarExpedicaoUsecase = require('../src/usecases/expedicao/finalizarExpedicao.usecase');
@@ -29,6 +34,13 @@ const finalizarExpedicaoUsecase = require('../src/usecases/expedicao/finalizarEx
 describe('Expedicao finalizar - concorrencia', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    funcionarioRepo.findByCracha.mockResolvedValue({
+      id: 'f-prod-1',
+      cracha: '1',
+      nome: 'Operador Expedicao',
+      setores: 'expedicao',
+      ativo: true
+    });
   });
 
   function mockBase() {
@@ -48,7 +60,7 @@ describe('Expedicao finalizar - concorrencia', () => {
     produtoPossuiSerieNoSistema.mockResolvedValue(true);
   }
 
-  test('deve retornar 409 quando houver conflito de concorrencia na finalizacao', async () => {
+  test('deve retornar 409 quando houver conflito de concorrência na finalizacao', async () => {
     mockBase();
 
     prisma.$transaction.mockImplementation(async (cb) =>
@@ -64,7 +76,7 @@ describe('Expedicao finalizar - concorrencia', () => {
     });
 
     expect(result.status).toBe(409);
-    expect(result.body.erro).toMatch(/Conflito de concorrencia/i);
+    expect(result.body.erro).toMatch(/Conflito de concorr[eê]ncia/i);
     expect(result.body.code).toBe('CONCURRENCY_CONFLICT');
     expect(result.body.detalhe).toBeTruthy();
   });

@@ -1,5 +1,4 @@
-// src/usecases/op/rastreabilidadeMateriais.usecase.js
-const ordemRepo = require('../../repositories/ordemProducao.repository');
+﻿const ordemRepo = require('../../repositories/ordemProducao.repository');
 const { FLUXO_ETAPAS } = require('../../domain/fluxoOp');
 const { consultarProdutoNoOmie } = require('../../integrations/omie/omie.produto');
 const { formatDateTimeBr } = require('../../utils/dateBr');
@@ -55,11 +54,21 @@ function calcularTempoPorEtapaMs(eventos) {
 }
 
 async function execute({ params }) {
-  const { id } = params;
+  const empresa = String(params?.empresa || '').trim();
+  const numeroOP = String(params?.numeroOP || '').trim();
+
+  if (!empresa || !numeroOP) {
+    return { status: 400, body: { erro: 'empresa e numeroOP são obrigatórios' } };
+  }
 
   try {
-    const op = await ordemRepo.findWithMateriaisById(id);
-    if (!op) return { status: 404, body: { erro: 'OP nao encontrada' } };
+    const opRef = await ordemRepo.findByNumeroOP(numeroOP);
+    if (!opRef) return { status: 404, body: { erro: 'OP não encontrada' } };
+    if (String(opRef.empresa || "").trim() !== empresa) {
+      return { status: 404, body: { erro: 'OP não encontrada para a empresa informada' } };
+    }
+    const op = await ordemRepo.findWithMateriaisById(opRef.id);
+    if (!op) return { status: 404, body: { erro: 'OP não encontrada' } };
 
     const eventos = (op.eventos || []).slice().sort((a, b) => new Date(a.criadoEm) - new Date(b.criadoEm));
 
@@ -70,7 +79,7 @@ async function execute({ params }) {
       temposPorEtapa[etapa] = formatarDuracao(temposMs[etapa]);
     }
 
-    const empresa = String(op.empresa || '').trim();
+    const empresaOp = String(op.empresa || '').trim();
 
     const codigos = new Set();
     for (const pf of op.produtosFinais || []) {
@@ -85,11 +94,11 @@ async function execute({ params }) {
     }
 
     const descricaoPorCodigo = {};
-    if (empresa && codigos.size > 0) {
+    if (empresaOp && codigos.size > 0) {
       const resultados = await Promise.all(
         [...codigos].map(async (codigo) => {
           try {
-            const produto = await consultarProdutoNoOmie(codigo, empresa);
+            const produto = await consultarProdutoNoOmie(codigo, empresaOp);
             return [codigo, produto?.descricao || null];
           } catch {
             return [codigo, null];

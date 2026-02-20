@@ -55,7 +55,7 @@ describe('Expedicao scan-serie - concorrencia', () => {
     consultarEstoquePadrao.mockResolvedValue({ nSaldo: 10 });
   }
 
-  test('deve retornar 409 quando houver conflito de concorrencia no claim da expedicao', async () => {
+  test('deve retornar 409 quando houver conflito de concorrência no claim da expedicao', async () => {
     mockBase();
 
     prisma.$transaction.mockImplementation(async (cb) =>
@@ -81,7 +81,7 @@ describe('Expedicao scan-serie - concorrencia', () => {
     });
 
     expect(result.status).toBe(409);
-    expect(result.body.erro).toMatch(/Conflito de concorrencia/i);
+    expect(result.body.erro).toMatch(/Conflito de concorr[eê]ncia/i);
     expect(result.body.code).toBe('CONCURRENCY_CONFLICT');
     expect(result.body.detalhe).toBeTruthy();
   });

@@ -3,23 +3,28 @@ const expedicaoRepo = require('../../repositories/expedicao.repository');
 const eventoExpedicaoRepo = require('../../repositories/eventoExpedicao.repository');
 const { consultarPedidoVenda } = require('../../integrations/omie/omie.facade');
 const { conflictResponse } = require('../../utils/httpErrors');
+const { validarFuncionarioAtivoNoSetor, SETOR_EXPEDICAO } = require('../../domain/setorManutencao');
 
 async function execute(body) {
   try {
     const { numeroPedido, empresa, funcionarioId } = body;
 
     if (!numeroPedido || !empresa || !funcionarioId) {
-      return { status: 400, body: { erro: 'numeroPedido, empresa e funcionarioId sao obrigatorios' } };
+      return { status: 400, body: { erro: 'numeroPedido, empresa e funcionarioId são obrigatórios' } };
     }
 
     const pedido = String(numeroPedido).trim();
     const emp = String(empresa).trim();
     const func = String(funcionarioId).trim();
 
-    const pedidoOmie = await consultarPedidoVenda(pedido, emp);
+    const checkFuncionario = await validarFuncionarioAtivoNoSetor(func, SETOR_EXPEDICAO);
+    if (!checkFuncionario.ok) {
+      return { status: 403, body: { erro: checkFuncionario.erro } };
+    }
 
+    const pedidoOmie = await consultarPedidoVenda(pedido, emp);
     if (!pedidoOmie || !Array.isArray(pedidoOmie.itens) || pedidoOmie.itens.length === 0) {
-      return { status: 404, body: { erro: 'Pedido nao encontrado ou sem itens no Omie' } };
+      return { status: 404, body: { erro: 'Pedido não encontrado ou sem itens no Omie' } };
     }
 
     const jaAtiva = await expedicaoRepo.findAtivaByNumeroPedido(pedido);
@@ -27,7 +32,7 @@ async function execute(body) {
       return {
         status: 400,
         body: {
-          erro: `Ja existe uma expedicao ATIVA para este pedido (${pedido}).`,
+          erro: `Já existe uma expedição ATIVA para este pedido (${pedido}).`,
           expedicaoId: jaAtiva.id
         }
       };
@@ -47,13 +52,13 @@ async function execute(body) {
       if (err?.code === 'P2002') {
         const ativaDepoisConflito = await expedicaoRepo.findAtivaByNumeroPedido(pedido);
         if (ativaDepoisConflito) {
-          return conflictResponse(`Ja existe uma expedicao ATIVA para este pedido (${pedido}).`, {
+          return conflictResponse(`Já existe uma expedição ATIVA para este pedido (${pedido}).`, {
             recurso: 'Expedicao',
             numeroPedido: pedido,
             expedicaoId: ativaDepoisConflito.id
           });
         }
-        return conflictResponse('Conflito de concorrencia ao iniciar expedicao. Tente novamente.', {
+        return conflictResponse('Conflito de concorrência ao iniciar expedição. Tente novamente.', {
           recurso: 'Expedicao',
           numeroPedido: pedido
         });
@@ -90,3 +95,4 @@ async function execute(body) {
 }
 
 module.exports = { execute };
+

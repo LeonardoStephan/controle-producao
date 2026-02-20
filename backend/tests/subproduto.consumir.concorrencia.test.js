@@ -82,7 +82,7 @@ describe('Subproduto consumir - concorrencia', () => {
     };
   }
 
-  test('deve retornar 409 quando houver conflito de concorrencia na vinculacao da etiqueta existente', async () => {
+  test('deve retornar 409 quando houver conflito de concorrência na vinculação da etiqueta existente', async () => {
     mockBase();
 
     prisma.$transaction.mockImplementation(async (cb) =>

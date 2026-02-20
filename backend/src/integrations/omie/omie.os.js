@@ -1,5 +1,9 @@
 const { postOmie } = require('./omie.http');
 
+const ORDEM_SERVICO_CACHE_TTL_MS = Number(process.env.OMIE_OS_CACHE_TTL_MS || 60_000);
+const ordemServicoCache = new Map();
+const ordemServicoInFlight = new Map();
+
 function getOrdemServicoEndpoint() {
   return process.env.OMIE_OS_ENDPOINT || 'https://app.omie.com.br/api/v1/servicos/os/';
 }
@@ -62,41 +66,62 @@ function extractProductCodeFromOS(data) {
 
 async function consultarOrdemServico(numeroOS, empresa) {
   const os = String(numeroOS || '').trim();
-  if (!os) return null;
+  const emp = String(empresa || '').trim();
+  if (!os || !emp) return null;
 
-  const endpoint = getOrdemServicoEndpoint();
-  const call = process.env.OMIE_OS_CONSULTAR_CALL || 'ConsultarOS';
+  const key = `${emp}::${os}`;
+  const now = Date.now();
+  const cached = ordemServicoCache.get(key);
+  if (cached && cached.expiresAt > now) return cached.value;
 
-  const resp = await postOmie({
-    endpoint,
-    empresa,
-    call,
-    param: [{
-      cCodIntOS: '',
-      nCodOS: 0,
-      cNumOS: os
-    }],
-    timeout: 30000
-  });
+  const inFlight = ordemServicoInFlight.get(key);
+  if (inFlight) return inFlight;
 
-  if (!resp.ok) {
-    return null;
-  }
+  const promise = (async () => {
+    try {
+      const endpoint = getOrdemServicoEndpoint();
+      const call = process.env.OMIE_OS_CONSULTAR_CALL || 'ConsultarOS';
 
-  const data = resp.data || {};
-  const cab = data.Cabecalho || {};
-  const add = data.InformacoesAdicionais || {};
-  const codProdutoExtraido = extractProductCodeFromOS(data);
+      const resp = await postOmie({
+        endpoint,
+        empresa: emp,
+        call,
+        param: [{
+          cCodIntOS: '',
+          nCodOS: 0,
+          cNumOS: os
+        }],
+        timeout: 30000
+      });
 
-  return {
-    numeroOS: String(cab.cNumOS || os),
-    nCodOS: cab.nCodOS || null,
-    clienteNome: add.cContato || null,
-    codProdutoOmie: codProdutoExtraido,
-    etapa: cab.cEtapa || null,
-    valorTotal: cab.nValorTotal || null,
-    raw: data
-  };
+      if (!resp.ok) return null;
+
+      const data = resp.data || {};
+      const cab = data.Cabecalho || {};
+      const add = data.InformacoesAdicionais || {};
+      const email = data.Email || {};
+      const codProdutoExtraido = extractProductCodeFromOS(data);
+
+      const value = {
+        numeroOS: String(cab.cNumOS || os),
+        nCodOS: cab.nCodOS || null,
+        clienteNome: add.cContato || null,
+        clienteEmail: String(email.cEnviarPara || '').trim() || null,
+        codProdutoOmie: codProdutoExtraido,
+        etapa: cab.cEtapa || null,
+        valorTotal: cab.nValorTotal || null,
+        raw: data
+      };
+
+      ordemServicoCache.set(key, { value, expiresAt: now + ORDEM_SERVICO_CACHE_TTL_MS });
+      return value;
+    } finally {
+      ordemServicoInFlight.delete(key);
+    }
+  })();
+
+  ordemServicoInFlight.set(key, promise);
+  return promise;
 }
 
 async function baixarPecaEstoqueOmie({
@@ -128,7 +153,7 @@ async function baixarPecaEstoqueOmie({
   });
 
   if (!resp.ok) {
-    return { ok: false, erro: 'Falha ao baixar peca no OMIE', detalhe: resp.error || null };
+    return { ok: false, erro: 'Falha ao baixar peça no OMIE', detalhe: resp.error || null };
   }
 
   return { ok: true, data: resp.data || null };

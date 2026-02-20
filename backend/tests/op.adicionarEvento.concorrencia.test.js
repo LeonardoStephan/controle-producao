@@ -17,7 +17,7 @@ describe('OP adicionarEvento - concorrencia', () => {
     jest.clearAllMocks();
   });
 
-  test('deve retornar 409 quando houver conflito de concorrencia (version/status mudou)', async () => {
+  test('deve retornar 409 quando houver conflito de concorrência (version/status mudou)', async () => {
     ordemRepo.findById.mockResolvedValue({
       id: 'op-1',
       status: 'montagem',
@@ -47,7 +47,7 @@ describe('OP adicionarEvento - concorrencia', () => {
     expect(result.body.detalhe).toBeTruthy();
   });
 
-  test('deve retornar 200 quando nao houver conflito e sequencia for valida', async () => {
+  test('deve retornar 200 quando não houver conflito e sequência for válida', async () => {
     ordemRepo.findById.mockResolvedValue({
       id: 'op-1',
       status: 'montagem',

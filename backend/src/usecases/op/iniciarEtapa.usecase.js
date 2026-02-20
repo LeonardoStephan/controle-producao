@@ -3,33 +3,40 @@ const { prisma } = require('../../database/prisma');
 
 const ordemRepo = require('../../repositories/ordemProducao.repository');
 const { FLUXO_ETAPAS } = require('../../domain/fluxoOp');
-const { conflictResponse, throwBusiness } = require('../../utils/httpErrors');
+const { throwBusiness } = require('../../utils/httpErrors');
+const { validarFuncionarioAtivoNoSetor, SETOR_PRODUCAO } = require('../../domain/setorManutencao');
 
 async function execute({ params = {}, body = {} }) {
   const { id, etapa } = params;
   const { funcionarioId } = body;
 
   if (!id || !etapa) {
-    return { status: 400, body: { erro: 'Parametros obrigatorios ausentes (id, etapa)' } };
+    return { status: 400, body: { erro: 'Parâmetros obrigatórios ausentes (id, etapa)' } };
   }
 
   if (!funcionarioId) {
-    return { status: 400, body: { erro: 'funcionarioId e obrigatorio' } };
+    return { status: 400, body: { erro: 'funcionarioId é obrigatório' } };
+  }
+
+  const checkFuncionario = await validarFuncionarioAtivoNoSetor(funcionarioId, SETOR_PRODUCAO);
+  if (!checkFuncionario.ok) {
+    return { status: 403, body: { erro: checkFuncionario.erro } };
   }
 
   if (!FLUXO_ETAPAS.includes(etapa) || etapa === 'finalizada') {
-    return { status: 400, body: { erro: 'Etapa invalida para inicio manual' } };
+    return { status: 400, body: { erro: 'Etapa inválida para início manual' } };
   }
 
   const op = await ordemRepo.findById(String(id));
-  if (!op) return { status: 404, body: { erro: 'OP nao encontrada' } };
+  if (!op) return { status: 404, body: { erro: 'OP não encontrada' } };
 
   if (op.status !== etapa) {
     return {
       status: 400,
-      body: { erro: `Nao e possivel iniciar ${etapa}. Etapa atual: ${op.status}` }
+      body: { erro: `Não é possível iniciar ${etapa}. Etapa atual: ${op.status}` }
     };
   }
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       const claimed = await tx.ordemProducao.updateMany({
@@ -38,10 +45,14 @@ async function execute({ params = {}, body = {} }) {
       });
 
       if (claimed.count === 0) {
-        throwBusiness(409, 'Conflito de concorrencia: OP foi alterada por outro usuario. Atualize e tente novamente.', {
-          code: 'CONCURRENCY_CONFLICT',
-          detalhe: { recurso: 'OrdemProducao', opId: String(id), etapa: String(etapa) }
-        });
+        throwBusiness(
+          409,
+          'Conflito de concorrência: OP foi alterada por outro usuário. Atualize e tente novamente.',
+          {
+            code: 'CONCURRENCY_CONFLICT',
+            detalhe: { recurso: 'OrdemProducao', opId: String(id), etapa: String(etapa) }
+          }
+        );
       }
 
       const ultimoEvento = await tx.eventoOP.findFirst({
@@ -67,14 +78,14 @@ async function execute({ params = {}, body = {} }) {
       }
 
       if (ultimoEvento.tipo === 'inicio' || ultimoEvento.tipo === 'retorno') {
-        throwBusiness(400, `Etapa ${etapa} ja esta iniciada`);
+        throwBusiness(400, `Etapa ${etapa} já está iniciada`);
       }
 
       if (ultimoEvento.tipo === 'pausa') {
-        throwBusiness(400, `Etapa ${etapa} esta pausada. Use retorno`);
+        throwBusiness(400, `Etapa ${etapa} está pausada. Use retorno`);
       }
 
-      throwBusiness(400, `Nao e possivel iniciar ${etapa} apos evento ${ultimoEvento.tipo}`);
+      throwBusiness(400, `Não é possível iniciar ${etapa} após evento ${ultimoEvento.tipo}`);
     });
 
     return result;
@@ -86,3 +97,4 @@ async function execute({ params = {}, body = {} }) {
 }
 
 module.exports = { execute };
+

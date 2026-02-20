@@ -5,22 +5,35 @@ const FLUXO_MANUTENCAO = [
   'avaliacao_garantia',
   'aguardando_aprovacao',
   'reparo',
-  'aguardando_envio',
+  'devolvida',
+  'descarte',
+  'embalagem',
   'finalizada'
 ];
 
-const STATUS_TERMINAIS_MANUTENCAO = ['finalizada', 'devolvida', 'destruida', 'cancelada'];
+const TRANSICOES_MANUTENCAO = {
+  recebida: ['conferencia_inicial'],
+  conferencia_inicial: ['conferencia_manutencao'],
+  conferencia_manutencao: ['avaliacao_garantia'],
+  avaliacao_garantia: ['aguardando_aprovacao'],
+  aguardando_aprovacao: ['reparo', 'devolvida', 'descarte'],
+  reparo: ['embalagem'],
+  devolvida: ['embalagem'],
+  descarte: ['finalizada'],
+  embalagem: ['finalizada']
+};
+
+// Status finais (Não permitem mais alteracao)
+const STATUS_TERMINAIS_MANUTENCAO = ['finalizada'];
 
 function podeAvancar(statusAtual, proximoStatus) {
-  const idxAtual = FLUXO_MANUTENCAO.indexOf(statusAtual);
-  const idxProximo = FLUXO_MANUTENCAO.indexOf(proximoStatus);
-  return idxAtual !== -1 && idxProximo === idxAtual + 1;
+  const proximos = TRANSICOES_MANUTENCAO[String(statusAtual || '').trim()] || [];
+  return proximos.includes(String(proximoStatus || '').trim());
 }
 
 function proximoStatus(statusAtual) {
-  const idx = FLUXO_MANUTENCAO.indexOf(statusAtual);
-  if (idx === -1) return null;
-  return FLUXO_MANUTENCAO[idx + 1] || null;
+  const proximos = TRANSICOES_MANUTENCAO[String(statusAtual || '').trim()] || [];
+  return proximos[0] || null;
 }
 
 function etapasAteReparo(statusAtual) {
@@ -32,6 +45,7 @@ function etapasAteReparo(statusAtual) {
 
 module.exports = {
   FLUXO_MANUTENCAO,
+  TRANSICOES_MANUTENCAO,
   STATUS_TERMINAIS_MANUTENCAO,
   podeAvancar,
   proximoStatus,

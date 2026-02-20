@@ -1,5 +1,4 @@
-﻿// src/usecases/peca/consumirPeca.usecase.js
-const crypto = require('crypto');
+﻿const crypto = require('crypto');
 const { prisma } = require('../../database/prisma');
 
 const ordemRepo = require('../../repositories/ordemProducao.repository');
@@ -7,10 +6,12 @@ const eventoRepo = require('../../repositories/eventoOP.repository');
 const produtoFinalRepo = require('../../repositories/produtoFinal.repository');
 const subprodutoRepo = require('../../repositories/subproduto.repository');
 const consumoPecaRepo = require('../../repositories/consumoPeca.repository');
+const manutencaoPecaRepo = require('../../repositories/manutencaoPecaTrocada.repository');
 
 const { extrairCodigoDaPecaDoQr, extrairQrId } = require('../../utils/pecaQr');
 const { estruturaTemItem } = require('../../integrations/omie/omie.estrutura');
 const { conflictResponse } = require('../../utils/httpErrors');
+const { validarFuncionarioAtivoNoSetor, SETOR_PRODUCAO } = require('../../domain/setorManutencao');
 
 async function execute(body) {
   const {
@@ -25,6 +26,11 @@ async function execute(body) {
 
   if (!codigoPeca || !qrCode || !funcionarioId || !empresa) {
     return { status: 400, body: { erro: 'Dados obrigatórios ausentes' } };
+  }
+
+  const checkFuncionario = await validarFuncionarioAtivoNoSetor(String(funcionarioId).trim(), SETOR_PRODUCAO);
+  if (!checkFuncionario.ok) {
+    return { status: 403, body: { erro: checkFuncionario.erro } };
   }
 
   if (!subprodutoId && !serieProdFinalId) {
@@ -100,7 +106,7 @@ async function execute(body) {
           codProdutoOmieResolved = String(codProdutoOmie).trim();
         }
       } else {
-        // placa nao vinculada a PF -> comportamento antigo
+        // placa não vinculada a PF -> comportamento antigo
         opIdResolved = sp.opId;
         contextoserieProdFinalId = null;
 
@@ -114,6 +120,13 @@ async function execute(body) {
 
     const op = await ordemRepo.findById(opIdResolved);
     if (!op) return { status: 404, body: { erro: 'OP não encontrada' } };
+
+    if (String(op.empresa || '').trim() && String(empresa).trim() !== String(op.empresa).trim()) {
+      return {
+        status: 400,
+        body: { erro: `OP pertence a empresa '${op.empresa}'. Voce enviou '${String(empresa).trim()}'.` }
+      };
+    }
 
     // consumo so se o processo "controlador" estiver em montagem
     if (op.status !== 'montagem') {
@@ -130,13 +143,17 @@ async function execute(body) {
 
     const qrAtivo = await consumoPecaRepo.findQrAtivo(qrCode);
     if (qrAtivo) return { status: 400, body: { erro: 'QR já utilizado' } };
+    const qrAtivoManutencao = await manutencaoPecaRepo.findQrAtivo(qrCode);
+    if (qrAtivoManutencao) return { status: 400, body: { erro: 'QR já utilizado na manutenção' } };
     if (qrId) {
-      const qrIdAtivo = await consumoPecaRepo.findQrIdAtivo(qrId);
-      if (qrIdAtivo) return { status: 400, body: { erro: 'ID de QR já utilizado' } };
+      const qrIdExistente = await consumoPecaRepo.findQrIdAny(qrId);
+      if (qrIdExistente) return { status: 400, body: { erro: 'ID de QR já utilizado' } };
+      const qrIdExistenteManutencao = await manutencaoPecaRepo.findQrIdAny(qrId);
+      if (qrIdExistenteManutencao) return { status: 400, body: { erro: 'ID de QR já utilizado na manutenção' } };
     }
 
     // =========================
-    // Validacao BOM "inteligente"
+    // Validação BOM "inteligente"
     // =========================
     let valido = false;
 
@@ -145,13 +162,13 @@ async function execute(body) {
       valido = await estruturaTemItem(codProdutoOmieResolved, empresa, codigoPeca);
     }
 
-    // 2) se nao bateu, tenta BOM da placa informada (se existir)
+    // 2) se não bateu, tenta BOM da placa informada (se existir)
     if (!valido && codProdutoOmiePlaca) {
       valido = await estruturaTemItem(codProdutoOmiePlaca, empresa, codigoPeca);
     }
 
-    // 3) se ainda nao bateu e o usuario chamou por PF (sem subprodutoId),
-    // tenta descobrir automaticamente qual placa vinculada contem essa peca no BOM
+    // 3) se ainda não bateu e o usuário chamou por PF (sem subprodutoId),
+    // tenta descobrir automaticamente qual placa vinculada contém essa peca no BOM
     if (!valido && serieProdFinalId && !subprodutoId) {
       const placas = await prisma.subproduto.findMany({
         where: { serieProdFinalId: String(serieProdFinalId) },
@@ -220,6 +237,8 @@ async function execute(body) {
 
     const consumoRetorno = {
       id: consumo.id,
+      opId: consumo.opId,
+      numeroOP: op?.numeroOP || null,
       codigoPeca: consumo.codigoPeca,
       qrCode: consumo.qrCode,
       qrId: consumo.qrId,
@@ -238,11 +257,19 @@ async function execute(body) {
     };
   } catch (err) {
     if (err?.code === 'P2002') {
-      return conflictResponse('Conflito de concorrencia ao consumir peca. QR ou contexto ja foi atualizado por outro usuario.', {
-        recurso: 'ConsumoPeca',
-        codigoPeca: String(body?.codigoPeca || ''),
-        qrId: extrairQrId(String(body?.qrCode || '')) || null
-      });
+      return {
+        status: 409,
+        body: {
+          erro: 'QR Code ou ID de QR já utilizado para esta peça/contexto.',
+          code: 'QR_DUPLICADO',
+          detalhe: {
+            recurso: 'ConsumoPeca',
+            codigoPeca: String(body?.codigoPeca || ''),
+            qrId: extrairQrId(String(body?.qrCode || '')) || null
+          },
+          dica: 'Use um QR novo para substituir a peca ou verifique se esta leitura já foi registrada.'
+        }
+      };
     }
     console.error(err);
     return { status: 500, body: { erro: 'Erro interno ao consumir peça' } };

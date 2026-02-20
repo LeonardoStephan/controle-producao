@@ -1,4 +1,3 @@
-// src/usecases/op/finalizarEtapa.usecase.js
 const crypto = require('crypto');
 const { prisma } = require('../../database/prisma');
 
@@ -10,34 +9,26 @@ const subprodutoRepo = require('../../repositories/subproduto.repository');
 const { FLUXO_ETAPAS } = require('../../domain/fluxoOp');
 const { consultarEstruturaProduto, extrairSubprodutosDoBOM } = require('../../integrations/omie/omie.estrutura');
 const { conflictResponse } = require('../../utils/httpErrors');
+const { validarFuncionarioAtivoNoSetor, SETOR_PRODUCAO } = require('../../domain/setorManutencao');
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * ✅ Retry pequeno APENAS para falha intermitente do Omie ao consultar estrutura.
- * Mantém a validação como bloqueante, mas evita possíveis erros como: “falhou na 1ª tentativa e funcionou na 2ª”.
- */
 async function consultarEstruturaComRetry(codProdutoOmie, empresa, { tentativas = 2 } = {}) {
   const cod = String(codProdutoOmie || '').trim();
   const emp = String(empresa || '').trim();
   if (!cod || !emp) return null;
 
   let lastErr = null;
-
   for (let i = 1; i <= tentativas; i++) {
     try {
       return await consultarEstruturaProduto(cod, emp);
     } catch (err) {
       lastErr = err;
-
       const msg = String(err?.message || '');
       const isFalhaEstrutura = msg.includes('FALHA_OMIE_CONSULTAR_ESTRUTURA');
-
-      // só dá retry nesse erro conhecido
       if (!isFalhaEstrutura || i === tentativas) throw err;
-
       await sleep(500);
     }
   }
@@ -55,6 +46,11 @@ async function execute({ params = {}, body = {} }) {
 
   if (!funcionarioId) {
     return { status: 400, body: { erro: 'funcionarioId é obrigatório' } };
+  }
+
+  const checkFuncionario = await validarFuncionarioAtivoNoSetor(funcionarioId, SETOR_PRODUCAO);
+  if (!checkFuncionario.ok) {
+    return { status: 403, body: { erro: checkFuncionario.erro } };
   }
 
   const op = await ordemRepo.findById(String(id));
@@ -78,18 +74,17 @@ async function execute({ params = {}, body = {} }) {
     };
   }
 
-  // próxima etapa default
   let proximaEtapa = FLUXO_ETAPAS[index + 1];
 
-  /* =====================================================
-     ✅ 1) OP de SUBPRODUTO/PLACA: exige registrar todas as etiquetas na montagem
-     Regra: total registros (Subproduto) da OP deve bater com op.quantidadeProduzida
-     Conta apenas registros "produzidos" (serieProdFinalId = null)
-  ====================================================== */
-  if (etapa === 'montagem' && op.tipoOp === 'subproduto') {
+  const tipoOp = String(op.tipoOp || '').trim().toLowerCase();
+  const ehSubprodutoComTeste = tipoOp === 'subproduto_com_teste';
+  const ehSubprodutoSemTeste = tipoOp === 'subproduto_sem_teste' || tipoOp === 'subproduto';
+  const ehSubprodutoLegado = !tipoOp && (await subprodutoRepo.countRegistradosNaOp(String(id))) > 0;
+  const ehSubproduto = ehSubprodutoComTeste || ehSubprodutoSemTeste || ehSubprodutoLegado;
+
+  if (etapa === 'montagem' && ehSubproduto) {
     const totalRegistrados = await subprodutoRepo.countRegistradosNaOp(String(id));
     const totalEsperado = Number(op.quantidadeProduzida || 0);
-
     const faltam = Math.max(0, totalEsperado - totalRegistrados);
     if (faltam > 0) {
       return {
@@ -102,26 +97,20 @@ async function execute({ params = {}, body = {} }) {
       };
     }
 
-    // fluxo: subproduto finaliza na montagem
+    proximaEtapa = ehSubprodutoComTeste ? 'teste' : 'finalizada';
+  }
+
+  if (etapa === 'teste' && ehSubproduto) {
     proximaEtapa = 'finalizada';
   }
 
-  /* =====================================================
-     ✅ 2) Regra antiga: se está finalizando TESTE e não existe PF, pode finalizar direto
-  ====================================================== */
   if (etapa === 'teste' && proximaEtapa === 'embalagem_estoque') {
     const existePF = await produtoFinalRepo.existsAnyByOpId(String(id));
     if (!existePF) proximaEtapa = 'finalizada';
   }
 
-  /* =====================================================
-     ✅ 3) Validação BOM SubProduto (somente ao finalizar MONTAGEM de OP de produto final)
-     - Só valida se existir PF com codProdutoOmie
-     - Usa COUNT de consumos por codigoSubproduto (sem campo quantidade)
-  ====================================================== */
-  if (etapa === 'montagem' && op.tipoOp !== 'subproduto') {
+  if (etapa === 'montagem' && !ehSubproduto) {
     const empresaOk = String(op.empresa || '').trim();
-
     if (!empresaOk) {
       return {
         status: 400,
@@ -150,18 +139,13 @@ async function execute({ params = {}, body = {} }) {
       }
 
       const subprodutosBOM = extrairSubprodutosDoBOM(bomData);
-
       if (subprodutosBOM.length > 0) {
-        // map { codigoSubproduto => qtdConsumida }
         const consumidoMap = await subprodutoRepo.countConsumidosNaOpAgrupado(String(id));
-
         const faltando = [];
+
         for (const sp of subprodutosBOM) {
-          const obrigatorioTotal =
-            Number(sp.qtdPorUnidade || 0) * Number(op.quantidadeProduzida || 0);
-
+          const obrigatorioTotal = Number(sp.qtdPorUnidade || 0) * Number(op.quantidadeProduzida || 0);
           const consumidoTotal = Number(consumidoMap[String(sp.codigo).trim()] || 0);
-
           if (consumidoTotal < obrigatorioTotal) {
             faltando.push({
               codigoSubproduto: sp.codigo,
@@ -187,9 +171,6 @@ async function execute({ params = {}, body = {} }) {
     }
   }
 
-  /* =====================================================
-     FINALIZAÇÃO
-  ====================================================== */
   try {
     await prisma.$transaction(async (tx) => {
       await tx.eventoOP.create({
@@ -229,7 +210,7 @@ async function execute({ params = {}, body = {} }) {
   } catch (err) {
     if (err?.code === 'CONCURRENCY_CONFLICT') {
       return conflictResponse(
-        'Conflito de concorrencia: OP foi alterada por outro usuario. Atualize e tente novamente.',
+        'Conflito de concorrência: OP foi alterada por outro usuário. Atualize e tente novamente.',
         { recurso: 'OrdemProducao', opId: String(id), etapa: String(etapa) }
       );
     }

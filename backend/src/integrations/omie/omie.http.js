@@ -13,10 +13,10 @@ function normalizarErroOmieData(data) {
       statusCode === 404 ||
       fault.includes('not found') ||
       fault.includes('não encontrado') ||
-      fault.includes('nao encontrado') ||
+      fault.includes('Não encontrado') ||
       fault.includes('inexistente') ||
       fault.includes('não existe') ||
-      fault.includes('nao existe')
+      fault.includes('Não existe')
   };
 }
 

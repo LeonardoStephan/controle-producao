@@ -1,4 +1,4 @@
-# Controle de Producao
+﻿# Controle de Producao
 
 Backend Node.js/Express + Prisma + MySQL para controle de producao, rastreabilidade de materiais e expedicao.
 
@@ -40,6 +40,105 @@ Principais pastas:
 
 - `http://localhost:3333`
 
+## Endpoints Oficiais (Atual)
+
+Operacionais (execucao por modulo):
+
+- OP:
+  - `POST /op/iniciar`
+  - `POST /op/:id/iniciar/:etapa`
+  - `POST /op/:id/eventos`
+  - `POST /op/:id/finalizar/:etapa`
+  - `GET /op/:empresa/:numeroOP/resumo`
+  - `GET /op/:empresa/:numeroOP/rastreabilidade-materiais`
+- Produto final:
+  - `POST /produto-final/criar`
+- Subproduto:
+  - `POST /subproduto/registrar`
+  - `POST /subproduto/consumir`
+- Pecas:
+  - `POST /pecas/consumir`
+  - `POST /pecas/substituir`
+- Expedicao:
+  - `POST /expedicao/iniciar`
+  - `POST /expedicao/:id/eventos`
+  - `POST /expedicao/:id/scan-serie`
+  - `POST /expedicao/serie/:id/foto`
+  - `POST /expedicao/fotos-gerais/upload`
+  - `GET /expedicao/fotos-gerais/:expedicaoId`
+  - `POST /expedicao/:id/finalizar`
+  - `GET /expedicao/:empresa/:numeroPedido/resumo`
+- Manutencao:
+  - `POST /manutencao/abrir`
+  - `POST /manutencao/:id/avancar`
+  - `POST /manutencao/:id/scan-serie`
+  - `POST /manutencao/:id/pecas`
+  - `POST /manutencao/:id/finalizar`
+  - `GET /manutencao/:empresa/:numeroOS/resumo`
+- Admin (funcionarios):
+  - `GET /admin/funcionarios`
+  - `POST /admin/funcionarios`
+  - `PUT /admin/funcionarios/:id`
+  - `PATCH /admin/funcionarios/:id/ativo`
+  - `DELETE /admin/funcionarios/:id`
+
+Rastreabilidade unificada (consulta oficial por serie):
+
+- `GET /series/:serie/timeline`
+
+Padrao de operador nos resumos/rastreabilidade:
+
+- `funcionarioNome`: nome resolvido via cadastro `Funcionario` (quando existir)
+
+Observacao:
+
+- Endpoints legados de historico fragmentado foram removidos em favor da consulta unificada.
+- Validacao de setor por funcionario agora usa cadastro em banco (`Funcionario`).
+- Endpoints de resumo operacional usam chave de negocio (`empresa + numero`) e nao mais `id`.
+## Perfis Web (sugestao de uso)
+
+Financeiro:
+
+- Foco em operacao de manutencao no setor financeiro.
+- Fluxo principal:
+  - `POST /manutencao/abrir`
+  - `POST /manutencao/:id/avancar` (etapas do financeiro)
+  - `GET /manutencao/:empresa/:numeroOS/resumo`
+
+Admin (consulta geral):
+
+- Foco em consulta e auditoria ponta a ponta.
+- Endpoints de consulta:
+  - `GET /series/:serie/timeline` (principal)
+  - `GET /op/:empresa/:numeroOP/resumo`
+  - `GET /op/:empresa/:numeroOP/rastreabilidade-materiais`
+  - `GET /expedicao/:empresa/:numeroPedido/resumo`
+  - `GET /expedicao/fotos-gerais/:expedicaoId`
+  - `GET /manutencao/:empresa/:numeroOS/resumo`
+
+## Consulta Unificada por Serie
+
+Rota:
+
+- `GET /series/:serie/timeline`
+
+Exemplo:
+
+- `GET /series/3004656/timeline`
+
+Retorna em uma unica resposta:
+
+- `producao` (produto final, OP, subprodutos e pecas consumidas)
+- `expedicao` (pedidos/series/eventos/fotos)
+- `manutencao` (OS, eventos e pecas trocadas da serie)
+- `timeline` (eventos ordenados por data para consumo no web)
+
+### Estrategia de consulta
+
+- Operacionais (processo por modulo): usar endpoints de `resumo` por recurso (`op`, `expedicao`, `manutencao`).
+- Rastreabilidade unificada (visao ponta a ponta): usar `GET /series/:serie/timeline`.
+- Endpoints legados de historico fragmentado foram removidos.
+
 ## Fluxo de OP
 
 Etapas atuais (codigo):
@@ -55,8 +154,8 @@ Rotas principais:
 - `POST /op/:id/iniciar/:etapa`
 - `POST /op/:id/eventos`
 - `POST /op/:id/finalizar/:etapa`
-- `GET /op/:id/resumo`
-- `GET /op/:id/rastreabilidade-materiais`
+- `GET /op/:empresa/:numeroOP/resumo`
+- `GET /op/:empresa/:numeroOP/rastreabilidade-materiais`
 
 Observacoes:
 
@@ -101,7 +200,6 @@ Rotas:
 
 - `POST /pecas/consumir`
 - `POST /pecas/substituir`
-- `GET /pecas/historico`
 
 Regras importantes:
 
@@ -121,7 +219,7 @@ Rotas:
 - `POST /expedicao/fotos-gerais/upload`
 - `GET /expedicao/fotos-gerais/:expedicaoId`
 - `POST /expedicao/:id/finalizar`
-- `GET /expedicao/:id/resumo`
+- `GET /expedicao/:empresa/:numeroPedido/resumo`
 
 Observacoes:
 
@@ -129,6 +227,301 @@ Observacoes:
 - Foto 1:1 usa `:id` de `expedicaoSerieId` na URL.
 - Finalizacao usa a empresa da propria expedicao como fonte principal.
 - `GET /expedicao/fotos-gerais/:expedicaoId` retorna tambem `cliente` e `fotosSerie` (fotos 1:1 com descricao do produto quando disponivel).
+
+## Manutencao
+
+Rotas:
+
+- `POST /manutencao/abrir`
+- `POST /manutencao/:id/avancar`
+- `POST /manutencao/:id/scan-serie`
+- `POST /manutencao/:id/pecas`
+- `POST /manutencao/:id/finalizar`
+- `GET /manutencao/:empresa/:numeroOS/resumo`
+
+Fluxo de etapas:
+
+- `recebida -> conferencia_inicial -> conferencia_manutencao -> avaliacao_garantia -> aguardando_aprovacao -> reparo -> embalagem -> finalizada`
+- Caminho alternativo sem aprovacao: `aguardando_aprovacao -> devolvida` ou `aguardando_aprovacao -> descarte`.
+- `emGarantia` so pode ser informado na etapa `avaliacao_garantia`.
+- `scan-serie` da manutencao exige historico de expedicao da serie e ultima expedicao `finalizada`.
+
+Permissão por setor (via cadastro de funcionário):
+
+Cadastro oficial de funcionários:
+
+- Recurso: `Funcionario` (tabela no banco)
+- Campos: `cracha`, `nome`, `setores` e `ativo`
+- Uso no backend:
+  - Manutencao: valida setor por etapa
+  - Producao: valida setor `producao` em inicio/eventos/finalizacao de OP
+  - Expedicao: valida setor `expedicao` em iniciar/eventos/scan-serie/finalizar
+
+Regras por endpoint:
+
+- `abrir`: somente `financeiro`
+- `scan-serie`: somente `manutencao`
+- `pecas`: somente `manutencao`
+- `finalizar`: somente `manutencao`
+- `avancar`: valida automaticamente o setor esperado para o status de destino
+
+### JSONs Admin (funcionarios)
+
+Criar:
+
+`POST /admin/funcionarios`
+
+```json
+{
+  "cracha": "12345",
+  "nome": "Idalha",
+  "setores": ["financeiro"],
+  "ativo": true
+}
+```
+
+Atualizar:
+
+`PUT /admin/funcionarios/:id`
+
+```json
+{
+  "nome": "Fernando Silva",
+  "setores": ["manutencao", "expedicao"]
+}
+```
+
+Ativar/Desativar:
+
+`PATCH /admin/funcionarios/:id/ativo`
+
+```json
+{
+  "ativo": false
+}
+```
+
+Resumo de manutencao:
+
+- `GET /manutencao/:empresa/:numeroOS/resumo` retorna apenas `ok` e `manutencao`.
+- Campos `exigeSerie` e `pendenteSerie` foram removidos do payload para simplificar o consumo no frontend.
+- Eventos e pecas trocadas retornam apenas `funcionarioNome`.
+
+Auditoria:
+
+- Eventos de manutencao agora armazenam `setor` alem de `funcionarioId`.
+- Logs operacionais por acao (bloqueio/sucesso) incluem `manutencaoId`, `funcionarioId`, `setor` e status.
+- A serie principal na tabela `Manutencao` foi removida; a fonte oficial de series da manutencao e `ManutencaoSerie` (1:N).
+
+### JSONs de teste (ordem recomendada)
+
+Base:
+
+- `http://localhost:3333`
+- Financeiro: `Idalha`
+- Manutencao: `Fernando`
+- Exemplo de OS: `405`
+
+1. Abrir manutencao (financeiro):
+
+`POST /manutencao/abrir`
+
+```json
+{
+  "numeroOS": "405",
+  "empresa": "marchi",
+  "funcionarioId": "Idalha",
+  "defeitoRelatado": "Nao liga",
+  "clienteEmail": "adm@gaolavanderia.com.br"
+}
+```
+
+Observacao: `clienteEmail` e opcional. Se nao for enviado, o sistema tenta buscar no Omie.
+
+2. Conferencia inicial (financeiro):
+
+`POST /manutencao/{{MAN_ID}}/avancar`
+
+```json
+{
+  "status": "conferencia_inicial",
+  "funcionarioId": "Idalha",
+  "observacao": null
+}
+```
+
+3. Conferencia manutencao (manutencao):
+
+`POST /manutencao/{{MAN_ID}}/avancar`
+
+```json
+{
+  "status": "conferencia_manutencao",
+  "funcionarioId": "Fernando",
+  "observacao": null
+}
+```
+
+4. Avaliacao garantia (manutencao):
+
+`POST /manutencao/{{MAN_ID}}/avancar`
+
+```json
+{
+  "status": "avaliacao_garantia",
+  "funcionarioId": "Fernando",
+  "diagnostico": "Falha no modulo RTC",
+  "emGarantia": false,
+  "observacao": null
+}
+```
+
+5. Aguardando aprovacao (financeiro):
+
+`POST /manutencao/{{MAN_ID}}/avancar`
+
+```json
+{
+  "status": "aguardando_aprovacao",
+  "funcionarioId": "Idalha",
+  "observacao": null
+}
+```
+
+6. Scan de series (manutencao) - repetir para cada serie:
+
+`POST /manutencao/{{MAN_ID}}/scan-serie`
+
+```json
+{
+  "serieProduto": "3004656",
+  "funcionarioId": "Fernando"
+}
+```
+
+7. Resumo para pegar `manutencaoSerieId` da serie alvo:
+
+`GET /manutencao/{{EMPRESA}}/{{NUMERO_OS}}/resumo`
+
+8A. Fluxo aprovado: ir para reparo (manutencao):
+
+`POST /manutencao/{{MAN_ID}}/avancar`
+
+```json
+{
+  "status": "reparo",
+  "funcionarioId": "Fernando",
+  "aprovadoOrcamento": true,
+  "observacao": "Cliente aprovou o orcamento"
+}
+```
+
+9A. Registrar peca trocada (manutencao):
+
+`POST /manutencao/{{MAN_ID}}/pecas`
+
+```json
+{
+  "manutencaoSerieId": "{{MAN_SERIE_ID}}",
+  "codigoPeca": "ACPL217",
+  "funcionarioId": "Fernando",
+  "qrCode": "06/02/2026 09:25:30;ACPL217;fab;123;456;06/02/2026;Limeira;ID:1770380731993",
+  "quantidade": 1
+}
+```
+
+10A. Embalagem (manutencao):
+
+`POST /manutencao/{{MAN_ID}}/avancar`
+
+```json
+{
+  "status": "embalagem",
+  "funcionarioId": "Fernando",
+  "observacao": null
+}
+```
+
+11A. Finalizar (manutencao):
+
+`POST /manutencao/{{MAN_ID}}/finalizar`
+
+```json
+{
+  "funcionarioId": "Fernando",
+  "pesoKg": "2,5",
+  "altura": "0,12",
+  "largura": "0,20",
+  "comprimento": "0,30",
+  "observacao": "Embalado e pronto para envio"
+}
+```
+
+8B. Fluxo nao aprovado com devolucao:
+
+`POST /manutencao/{{MAN_ID}}/avancar`
+
+```json
+{
+  "status": "devolucao",
+  "funcionarioId": "Fernando",
+  "emGarantia": false,
+  "aprovadoOrcamento": false,
+  "observacao": "Cliente nao aprovou o orcamento"
+}
+```
+
+9B. Embalagem apos devolucao:
+
+`POST /manutencao/{{MAN_ID}}/avancar`
+
+```json
+{
+  "status": "embalagem",
+  "funcionarioId": "Fernando",
+  "observacao": null
+}
+```
+
+10B. Finalizar devolucao:
+
+`POST /manutencao/{{MAN_ID}}/finalizar`
+
+```json
+{
+  "funcionarioId": "Fernando",
+  "observacao": "Devolvido ao cliente sem reparo"
+}
+```
+
+8C. Fluxo nao aprovado com descarte:
+
+`POST /manutencao/{{MAN_ID}}/avancar`
+
+```json
+{
+  "status": "descarte",
+  "funcionarioId": "Fernando",
+  "emGarantia": false,
+  "aprovadoOrcamento": false,
+  "observacao": "Sem aprovacao do cliente; produto destinado a descarte"
+}
+```
+
+9C. Finalizar descarte:
+
+`POST /manutencao/{{MAN_ID}}/finalizar`
+
+```json
+{
+  "funcionarioId": "Fernando",
+  "observacao": "Processo encerrado por descarte"
+}
+```
+
+Consultas finais:
+
+- `GET /manutencao/{{EMPRESA}}/{{NUMERO_OS}}/resumo`
 
 ## Ajustes Recentes
 
@@ -213,6 +606,11 @@ Utilitarios/regras:
 ### Testes Implementados
 
 - Testes automatizados de concorrencia (Jest) para OP, subproduto e expedicao.
+- Testes de permissao por setor no fluxo de manutencao:
+  - `backend/tests/manutencao.setor.permissoes.test.js`
+  - `backend/tests/manutencao.registrarPeca.validacoes.test.js`
+    - cobre bloqueio quando existe manutencao com multi-produto sem `manutencaoSerieId`
+    - cobre bloqueio de divergencia entre `codigoPeca` e codigo extraido do `qrCode`
 - Script de carga basica (smoke) com `autocannon`.
 
 ### Criterios Atendidos
@@ -277,3 +675,5 @@ No diretorio `backend/`:
 ## Testes de Fluxo (Postman)
 
 Para roteiro completo de testes (OP, PF, subproduto, pecas e expedicao), use o guia interno validado no time.
+
+

@@ -19,6 +19,13 @@ async function updateStatus(id, status) {
   });
 }
 
+async function updateById(id, data) {
+  return prisma.ordemProducao.update({
+    where: { id: String(id) },
+    data
+  });
+}
+
 async function findWithMateriaisById(id) {
   return prisma.ordemProducao.findUnique({
     where: { id: String(id) },
@@ -40,5 +47,6 @@ module.exports = {
   findByNumeroOP,
   create,
   updateStatus,
+  updateById,
   findWithMateriaisById
 };

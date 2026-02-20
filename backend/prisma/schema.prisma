@@ -8,7 +8,7 @@ generator client {
 }
 
 /////////////////////////////////////////////////////////
-/////////////////// PROCESSO PRODUÇÃO ///////////////////
+/////////////////// PROCESSO PRODUÃ‡ÃƒO ///////////////////
 /////////////////////////////////////////////////////////
 
 model OrdemProducao {
@@ -17,6 +17,7 @@ model OrdemProducao {
   empresa             String
   descricaoProduto    String
   quantidadeProduzida Int
+  tipoOp              String   @default("produto_final")
   status              String
   version             Int      @default(0)
   criadoEm            DateTime @default(now())
@@ -50,6 +51,7 @@ model ProdutoFinal {
   consumosPeca    ConsumoPeca[]
   expedicoesSerie ExpedicaoSerie[]
   manutencoes     Manutencao[]
+  manutencoesSerie ManutencaoSerie[]
 }
 
 model Subproduto {
@@ -59,7 +61,6 @@ model Subproduto {
   opNumeroSubproduto String
   funcionarioId     String
   opId              String
-
   serieProdFinalId  String?
 
   ordemProducao     OrdemProducao @relation(fields: [opId], references: [id])
@@ -79,7 +80,6 @@ model ConsumoPeca {
   qrId          String?
   funcionarioId String
   opId          String
-
   serieProdFinalId String?
   subprodutoId     String?
 
@@ -100,7 +100,7 @@ model ConsumoPeca {
 }
 
 /////////////////////////////////////////////////////////
-////////////////// PROCESSO EXPEDIÇÃO ///////////////////
+////////////////// PROCESSO EXPEDIÃ‡ÃƒO ///////////////////
 /////////////////////////////////////////////////////////
 
 model Expedicao {
@@ -134,7 +134,6 @@ model ExpedicaoSerie {
   expedicaoId  String
   codProdutoOmie String
   serie        String?
-
   serieProdFinalId String?
 
   expedicao    Expedicao     @relation(fields: [expedicaoId], references: [id])
@@ -181,7 +180,6 @@ model Manutencao {
   version                 Int       @default(0)
   funcionarioAberturaId   String
   funcionarioAtualId      String?
-  serieProduto            String
   codProdutoOmie          String?
   clienteNome             String?
   defeitoRelatado         String?
@@ -193,20 +191,39 @@ model Manutencao {
   dataAprovacao           DateTime?
   dataFinalizacao         DateTime?
   pesoKg                  Float?
-  volumeM3                Float?
+  altura                  Float?
+  largura                 Float?
+  comprimento             Float?
   observacao              String?
   criadoEm                DateTime  @default(now())
   atualizadoEm            DateTime  @updatedAt
-
   serieProdFinalId        String?
 
   produtoFinal            ProdutoFinal?         @relation(fields: [serieProdFinalId], references: [id])
   eventos                 ManutencaoEvento[]
+  series                  ManutencaoSerie[]
   pecasTrocadas           ManutencaoPecaTrocada[]
 
-  @@index([serieProduto])
   @@index([status])
   @@index([dataEntrada])
+}
+
+model ManutencaoSerie {
+  id              String   @id
+  manutencaoId    String
+  serie           String
+  codProdutoOmie  String?
+  serieProdFinalId String?
+  criadoEm        DateTime @default(now())
+
+  manutencao      Manutencao   @relation(fields: [manutencaoId], references: [id])
+  produtoFinal    ProdutoFinal? @relation(fields: [serieProdFinalId], references: [id])
+  pecasTrocadas   ManutencaoPecaTrocada[]
+
+  @@unique([manutencaoId, serie])
+  @@index([serie])
+  @@index([manutencaoId, criadoEm])
+  @@index([serieProdFinalId])
 }
 
 model ManutencaoEvento {
@@ -214,6 +231,7 @@ model ManutencaoEvento {
   manutencaoId  String
   tipo          String
   funcionarioId String
+  setor         String?
   observacao    String?
   criadoEm      DateTime @default(now())
 
@@ -225,16 +243,35 @@ model ManutencaoEvento {
 model ManutencaoPecaTrocada {
   id            String   @id
   manutencaoId  String
+  manutencaoSerieId String?
   codigoPeca    String
+  codigoSubproduto String?
+  descricaoSubproduto String?
   qrCode        String?
   qrId          String?
   quantidade    Int      @default(1)
   funcionarioId String
   criadoEm      DateTime @default(now())
+  fimEm         DateTime?
 
   manutencao Manutencao @relation(fields: [manutencaoId], references: [id])
+  manutencaoSerie ManutencaoSerie? @relation(fields: [manutencaoSerieId], references: [id])
 
   @@index([manutencaoId, criadoEm])
+  @@index([manutencaoSerieId])
+  @@index([manutencaoId, codigoPeca, fimEm])
   @@index([codigoPeca])
   @@index([qrId])
 }
+
+model Funcionario {
+  id          String   @id
+  cracha      String   @unique
+  nome        String
+  setores     String
+  ativo       Boolean  @default(true)
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+}
+
+

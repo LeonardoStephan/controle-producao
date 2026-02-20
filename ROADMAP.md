@@ -1,4 +1,4 @@
-# ROADMAP
+﻿# ROADMAP
 
 Plano de evolucao do projeto com foco em estabilidade operacional, rastreabilidade ponta a ponta e escala.
 
@@ -21,12 +21,14 @@ Escopo inicial (MVP):
 - Finalizacao de manutencao
 - Registro de pecas trocadas na manutencao
 - Historico de retornos por produto/serie
+- Controle de permissao por setor (financeiro/manutencao) por etapa do fluxo
+- Auditoria de setor nos eventos de manutencao
 
 Entidades sugeridas:
 
 - `Manutencao`
 - `ManutencaoEvento`
-- `ManutencaoPeca`
+- `ManutencaoPecaTrocada`
 
 Beneficio:
 
@@ -57,7 +59,7 @@ Objetivo:
 
 Entrega sugerida:
 
-- Endpoint de timeline por serie (ex.: `GET /produto/:serie/timeline`)
+- Endpoint de timeline por serie (ex.: `GET /series/:serie/timeline`)
 
 ### 4) Frontend Operacional e Gestao
 
@@ -85,7 +87,7 @@ Gestao (opcional):
 
 Foco:
 
-- Performance das integracoes Omie/ViaOnda
+- Performance das integracoes Omie/ViaOnda-Etiquetadora
 - Testes de fluxo critico
 - Padronizacao de ambiente
 
@@ -109,6 +111,54 @@ Entregas:
 - Abertura/andamento/finalizacao de manutencao
 - Registro de pecas trocadas em manutencao
 - Timeline unica: `producao -> manutencao -> expedicao`
+- Regras de setor aplicadas no backend por acao:
+  - `abrir` -> financeiro
+  - `scan-serie`, `pecas`, `finalizar` -> manutencao
+  - `avancar` -> setor valido conforme status de destino
+
+Status atual da Fase 2:
+
+- Concluido:
+  - Fluxo de manutencao ponta a ponta no backend
+  - Consulta unificada por serie implementada no backend:
+    - `GET /series/:serie/timeline`
+    - agrega producao + expedicao + manutencao em uma unica resposta
+  - Estrategia de consulta consolidada:
+    - Operacional: endpoints de `resumo` por modulo
+    - Rastreabilidade: endpoint unificado por serie
+  - Resumos operacionais padronizados por chave de negocio (`empresa + numero`):
+    - `GET /op/:empresa/:numeroOP/resumo`
+    - `GET /op/:empresa/:numeroOP/rastreabilidade-materiais`
+    - `GET /expedicao/:empresa/:numeroPedido/resumo`
+    - `GET /manutencao/:empresa/:numeroOS/resumo`
+  - Legados de historico fragmentado removidos (`/manutencao/serie/:serie/historico` e `/pecas/historico`)
+  - Rotas de manutencao consolidadas:
+    - `POST /manutencao/abrir`
+    - `POST /manutencao/:id/avancar`
+    - `POST /manutencao/:id/scan-serie`
+    - `POST /manutencao/:id/pecas`
+    - `POST /manutencao/:id/finalizar`
+    - `GET /manutencao/:empresa/:numeroOS/resumo`
+  - Validacao de permissao por setor via cadastro de funcionarios
+  - Auditoria de setor em `ManutencaoEvento`
+  - Testes automatizados de permissao por setor
+  - Cadastro administrativo de funcionarios implementado no backend:
+    - `GET /admin/funcionarios`
+    - `POST /admin/funcionarios`
+    - `PUT /admin/funcionarios/:id`
+    - `PATCH /admin/funcionarios/:id/ativo`
+    - `DELETE /admin/funcionarios/:id`
+  - Validacao de setor por funcionario aplicada em:
+    - manutencao (abrir, avancar, scan-serie, pecas, finalizar)
+    - producao OP (iniciar, iniciar etapa, eventos, finalizar etapa)
+    - expedicao (iniciar, eventos, scan-serie, finalizar)
+  - Padronizacao de operador em payloads de consulta:
+    - `funcionarioNome` (resolvido pelo cadastro)
+  - Manutencao reforcada para rastreabilidade:
+    - `scan-serie` permitido somente com historico de expedicao
+    - ultima expedicao da serie deve estar `finalizada`
+- Pendente:
+  - Painel web operacional
 
 ### Fase 3 (medio/longo prazo, escala)
 
@@ -149,3 +199,5 @@ Entregas:
 - Emissao fiscal homologada no provedor escolhido
 - Alertas ativos para falhas de integracao e fluxo
 - Operacao movel validada em piloto
+
+

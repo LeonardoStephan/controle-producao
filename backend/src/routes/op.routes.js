@@ -8,9 +8,9 @@ router.post('/:id/eventos', controller.adicionarEvento);
 router.post('/:id/finalizar/:etapa', controller.finalizarEtapa);
 
 // LOG CRONOLÓGICO DAS ETAPAS DA OP
-router.get('/:id/resumo', controller.resumoOp);
+router.get('/:empresa/:numeroOP/resumo', controller.resumoOp);
 
 // RASTREABILIDADE DE MATERIAIS UTILIZADOS NO PROCESSO
-router.get('/:id/rastreabilidade-materiais', controller.rastreabilidadeMateriais);
+router.get('/:empresa/:numeroOP/rastreabilidade-materiais', controller.rastreabilidadeMateriais);
 
 module.exports = router;

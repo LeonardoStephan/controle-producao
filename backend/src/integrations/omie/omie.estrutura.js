@@ -85,6 +85,10 @@ function extrairSubprodutosDoBOM(bomData) {
     .filter((i) => i.codigo && i.qtdPorUnidade > 0);
 }
 
+function extrairDescrFamiliaIdent(bomData) {
+  return String(bomData?.ident?.descrFamilia || '').trim();
+}
+
 /**
  * Retorna um map { codigoSubproduto => quantidadeObrigatoriaNoBOM }
  * Considera subproduto quando item.descrFamMalha === 'SubProduto'
@@ -125,6 +129,7 @@ async function estruturaTemItem(codProdutoOmie, empresa, codigoItem) {
 module.exports = {
   consultarEstruturaProduto,
   extrairSubprodutosDoBOM,
+  extrairDescrFamiliaIdent,
   obterObrigatoriosSubprodutosDoBOM,
   estruturaTemItem
 };

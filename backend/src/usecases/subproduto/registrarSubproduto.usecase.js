@@ -1,13 +1,13 @@
-// src/usecases/subproduto/registrarSubproduto.usecase.js
-const crypto = require('crypto');
+﻿const crypto = require('crypto');
 
 const ordemRepo = require('../../repositories/ordemProducao.repository');
 const eventoRepo = require('../../repositories/eventoOP.repository');
 const subprodutoRepo = require('../../repositories/subproduto.repository');
 
-const { buscarEtiquetaProdutoFinal, buscarOP } = require('../../integrations/viaonda/viaonda.facade');
-const { validarProdutoExisteNoOmie } = require('../../integrations/omie/omie.produto');
+const { buscarEtiquetaProdutoFinal } = require('../../integrations/viaonda/viaonda.facade');
+const { consultarProdutoNoOmie } = require('../../integrations/omie/omie.produto');
 const { extrairCodigoDoQr } = require('../../utils/subprodutoQr');
+const { validarFuncionarioAtivoNoSetor, SETOR_PRODUCAO } = require('../../domain/setorManutencao');
 
 function extrairCodigoProdutoDaOpViaOnda(item) {
   const codigo = item?.codigo ? String(item.codigo).trim() : null;
@@ -27,7 +27,7 @@ async function execute(body) {
   } = body;
 
   if (!opId || !serie || !funcionarioId) {
-    return { status: 400, body: { erro: 'opId, serie e funcionarioId sao obrigatorios' } };
+    return { status: 400, body: { erro: 'opId, série e funcionarioId são obrigatórios' } };
   }
 
   if (Number(quantidade) !== 1) {
@@ -38,13 +38,25 @@ async function execute(body) {
   }
 
   const op = await ordemRepo.findById(String(opId));
-  if (!op) return { status: 404, body: { erro: 'OP nao encontrada' } };
+  if (!op) return { status: 404, body: { erro: 'OP não encontrada' } };
+
+  if (empresa && String(op.empresa || '').trim() && String(empresa).trim() !== String(op.empresa).trim()) {
+    return {
+      status: 400,
+      body: { erro: `OP pertence à empresa '${op.empresa}'. Você enviou '${String(empresa).trim()}'.` }
+    };
+  }
+
+  const checkFuncionario = await validarFuncionarioAtivoNoSetor(String(funcionarioId).trim(), SETOR_PRODUCAO);
+  if (!checkFuncionario.ok) {
+    return { status: 403, body: { erro: checkFuncionario.erro } };
+  }
 
   const empresaResolvida = String(op.empresa || empresa || '').trim();
   if (!empresaResolvida) {
     return {
       status: 400,
-      body: { erro: 'Empresa nao definida. Salve empresa na OP (op.empresa) ou envie "empresa" no body.' }
+      body: { erro: 'Empresa não definida. Salve empresa na OP (op.empresa) ou envie "empresa" no body.' }
     };
   }
 
@@ -57,7 +69,7 @@ async function execute(body) {
 
   const ultimoEvento = await eventoRepo.findUltimoEvento(String(opId), 'montagem');
   if (!ultimoEvento || ['pausa', 'fim'].includes(ultimoEvento.tipo)) {
-    return { status: 400, body: { erro: 'Montagem nao esta ativa' } };
+    return { status: 400, body: { erro: 'Montagem não está ativa' } };
   }
 
   const serieNorm = String(serie).trim();
@@ -67,17 +79,17 @@ async function execute(body) {
     if (!existente.serieProdFinalId) {
       return {
         status: 200,
-        body: { ok: true, aviso: 'Subproduto ja esta registrado.' }
+        body: { ok: true, aviso: 'Subproduto já está registrado.' }
       };
     }
-    return { status: 400, body: { erro: 'Etiqueta de subproduto ja utilizada' } };
+    return { status: 400, body: { erro: 'Etiqueta de subproduto já utilizada' } };
   }
 
   const opNumero = String(opNumeroSubproduto || op.numeroOP || '').trim();
   if (!opNumero) {
     return {
       status: 400,
-      body: { erro: 'opNumeroSubproduto e obrigatorio (ou OP precisa ter numeroOP)' }
+      body: { erro: 'opNumeroSubproduto é obrigatório (ou OP precisa ter numeroOP)' }
     };
   }
 
@@ -88,23 +100,19 @@ async function execute(body) {
   if (!codigoDetectado) {
     return {
       status: 400,
-      body: { erro: 'Nao foi possivel identificar o codigo do subproduto. Envie "codigoSubproduto".' }
+      body: { erro: 'Não foi possível identificar o código do subproduto. Envie "codigoSubproduto".' }
     };
   }
 
   let etiquetas;
-  let dadosOp;
   try {
-    [etiquetas, dadosOp] = await Promise.all([
-      buscarEtiquetaProdutoFinal(opNumero, empresaResolvida),
-      buscarOP(opNumero, empresaResolvida)
-    ]);
-  } catch (err) {
+    etiquetas = await buscarEtiquetaProdutoFinal(opNumero, empresaResolvida);
+  } catch (_err) {
     return { status: 502, body: { erro: 'Falha ao consultar etiquetadora (ViaOnda)' } };
   }
 
   if (!Array.isArray(etiquetas) || etiquetas.length === 0) {
-    return { status: 400, body: { erro: 'OP de subproduto nao encontrada na ViaOnda' } };
+    return { status: 400, body: { erro: 'OP de subproduto não encontrada na ViaOnda' } };
   }
 
   const pertence = etiquetas.some((e) => String(e.serie || '').trim() === serieNorm);
@@ -123,7 +131,7 @@ async function execute(body) {
     return {
       status: 400,
       body: {
-        erro: 'Etiqueta nao pertence a OP do subproduto',
+        erro: 'Etiqueta não pertence à OP do subproduto',
         serieEnviada: String(serie),
         opNumeroSubproduto: opNumero,
         seriesPertencentesOp: seriesPendentesDaOp
@@ -131,15 +139,12 @@ async function execute(body) {
     };
   }
 
-  if (!Array.isArray(dadosOp) || dadosOp.length === 0) {
-    return { status: 400, body: { erro: `OP do subproduto ${opNumero} nao encontrada na etiquetadora` } };
-  }
-
-  const codigoEsperado = extrairCodigoProdutoDaOpViaOnda(dadosOp[0]);
+  const etiquetaDaSerie = etiquetas.find((e) => String(e.serie || '').trim() === serieNorm) || null;
+  const codigoEsperado = extrairCodigoProdutoDaOpViaOnda(etiquetaDaSerie);
   if (!codigoEsperado) {
     return {
       status: 502,
-      body: { erro: `A etiquetadora nao retornou o campo "codigo" para a OP ${opNumero}` }
+      body: { erro: `A etiquetadora não retornou o campo "codigo" para a série ${serieNorm} na OP ${opNumero}` }
     };
   }
 
@@ -147,19 +152,23 @@ async function execute(body) {
     return {
       status: 400,
       body: {
-        erro: `codigoSubproduto invalido para a OP ${opNumero}. Esperado: ${codigoEsperado}`,
+        erro: `codigoSubproduto inválido para a OP ${opNumero}. Esperado: ${codigoEsperado}`,
         enviado: String(codigoDetectado).trim()
       }
     };
   }
 
   try {
-    const ok = await validarProdutoExisteNoOmie(codigoDetectado, empresaResolvida);
-    if (!ok) {
-      console.warn('[registrarSubproduto] Aviso: produto nao encontrado no Omie (ignorado):', codigoDetectado);
+    // Usa caminho com cache de 10 min para reduzir latencia entre series sequenciais.
+    const produtoOmie = await consultarProdutoNoOmie(codigoDetectado, empresaResolvida);
+    if (!produtoOmie) {
+      return {
+        status: 400,
+        body: { erro: `Produto não encontrado no Omie: ${String(codigoDetectado).trim()}` }
+      };
     }
-  } catch (err) {
-    console.warn('[registrarSubproduto] Aviso: falha na validacao do Omie (ignorado):', err.message);
+  } catch (_err) {
+    return { status: 502, body: { erro: 'Falha ao validar produto no Omie' } };
   }
 
   let subproduto;
@@ -174,22 +183,21 @@ async function execute(body) {
       codigoSubproduto: String(codigoDetectado).trim()
     });
   } catch (err) {
-    // Corrida de concorrencia: outro cliente pode ter criado a mesma etiqueta entre o check e o create.
     if (err?.code === 'P2002') {
       const existenteAposConflito = await subprodutoRepo.findByEtiquetaId(serieNorm);
       if (existenteAposConflito && !existenteAposConflito.serieProdFinalId) {
         return {
           status: 200,
-          body: { ok: true, aviso: 'Subproduto ja esta registrado.' }
+          body: { ok: true, aviso: 'Subproduto já está registrado.' }
         };
       }
       if (existenteAposConflito && existenteAposConflito.serieProdFinalId) {
-        return { status: 400, body: { erro: 'Etiqueta de subproduto ja utilizada' } };
+        return { status: 400, body: { erro: 'Etiqueta de subproduto já utilizada' } };
       }
       return {
         status: 409,
         body: {
-          erro: 'Conflito de concorrencia ao registrar subproduto. Tente novamente.',
+          erro: 'Conflito de concorrência ao registrar subproduto. Tente novamente.',
           code: 'CONCURRENCY_CONFLICT',
           detalhe: { recurso: 'Subproduto', etiquetaId: serieNorm, opId: String(opId) }
         }

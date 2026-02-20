@@ -1,14 +1,20 @@
-const expedicaoRepo = require('../../repositories/expedicao.repository');
+﻿const expedicaoRepo = require('../../repositories/expedicao.repository');
 const { consultarPedidoVenda } = require('../../integrations/omie/omie.facade');
 const { formatDateTimeBr } = require('../../utils/dateBr');
+const { carregarMapaNomePorCracha, nomePorCrachaOuOriginal } = require('../../utils/funcionarioNome');
 
 async function execute({ params }) {
-  const { id } = params;
+  const empresa = String(params?.empresa || '').trim();
+  const numeroPedido = String(params?.numeroPedido || '').trim();
+
+  if (!empresa || !numeroPedido) {
+    return { status: 400, body: { erro: 'empresa e numeroPedido são obrigatórios' } };
+  }
 
   let expedicao = null;
 
   try {
-    expedicao = await expedicaoRepo.findResumoById(id);
+    expedicao = await expedicaoRepo.findResumoByNumeroPedidoEmpresa(numeroPedido, empresa);
 
     if (!expedicao) {
       return { status: 404, body: { erro: 'Expedição não encontrada' } };
@@ -72,6 +78,8 @@ async function execute({ params }) {
       tipo: item.series.length > 0 ? 'Com série' : 'Sem série'
     }));
 
+    const mapaNomes = await carregarMapaNomePorCracha((expedicao.eventos || []).map((e) => e.funcionarioId));
+
     return {
       status: 200,
       body: {
@@ -84,7 +92,7 @@ async function execute({ params }) {
 
           eventos: (expedicao.eventos || []).map((e) => ({
             tipo: e.tipo,
-            funcionarioId: e.funcionarioId,
+            funcionarioNome: nomePorCrachaOuOriginal(e.funcionarioId, mapaNomes),
             criadoEm: formatDateTimeBr(e.criadoEm, { withDash: true })
           })),
 

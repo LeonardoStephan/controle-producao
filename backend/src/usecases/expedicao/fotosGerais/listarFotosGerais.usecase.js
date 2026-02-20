@@ -1,4 +1,4 @@
-const expedicaoRepo = require('../../../repositories/expedicao.repository');
+﻿const expedicaoRepo = require('../../../repositories/expedicao.repository');
 const { consultarPedidoVenda } = require('../../../integrations/omie/omie.facade');
 const { formatDateTimeBr } = require('../../../utils/dateBr');
 
@@ -7,12 +7,12 @@ async function execute(params) {
     const { expedicaoId } = params;
 
     if (!expedicaoId) {
-      return { status: 400, body: { erro: 'expedicaoId e obrigatorio' } };
+      return { status: 400, body: { erro: 'expedicaoId é obrigatório' } };
     }
 
     const expedicao = await expedicaoRepo.findResumoById(expedicaoId);
     if (!expedicao) {
-      return { status: 404, body: { erro: 'Expedicao nao encontrada' } };
+      return { status: 404, body: { erro: 'Expedição não encontrada' } };
     }
 
     let cliente = null;
@@ -28,7 +28,7 @@ async function execute(params) {
         descricaoPorCodigo[codigo] = item.descricao || null;
       }
     } catch (err) {
-      console.warn('Aviso listarFotosGerais: falha ao buscar cliente/descricoes no Omie:', err.message);
+      console.warn('Aviso listarFotosGerais: falha ao buscar cliente/descrições no Omie:', err.message);
     }
 
     const fotos = (expedicao.fotosGerais || []).map((f) => ({

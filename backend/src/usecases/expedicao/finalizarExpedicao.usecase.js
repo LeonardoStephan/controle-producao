@@ -7,6 +7,7 @@ const fotoGeralRepo = require('../../repositories/fotoExpedicaoGeral.repository'
 const { consultarPedidoVenda } = require('../../integrations/omie/omie.facade');
 const { produtoPossuiSerieNoSistema } = require('../../domain/expedicao.rules');
 const { throwBusiness } = require('../../utils/httpErrors');
+const { validarFuncionarioAtivoNoSetor, SETOR_EXPEDICAO } = require('../../domain/setorManutencao');
 
 async function execute({ params, body }) {
   try {
@@ -14,28 +15,42 @@ async function execute({ params, body }) {
     const { funcionarioId, empresa } = body;
 
     if (!funcionarioId) {
-      return { status: 400, body: { erro: 'funcionarioId e obrigatorio' } };
+      return { status: 400, body: { erro: 'funcionarioId é obrigatório' } };
+    }
+
+    const checkFuncionario = await validarFuncionarioAtivoNoSetor(funcionarioId, SETOR_EXPEDICAO);
+    if (!checkFuncionario.ok) {
+      return { status: 403, body: { erro: checkFuncionario.erro } };
     }
 
     const expedicao = await expedicaoRepo.findByIdIncludeSeries(id);
     if (!expedicao) {
-      return { status: 404, body: { erro: `Expedicao nao encontrada para o id ${id}` } };
+      return { status: 404, body: { erro: `Expedição não encontrada para o id ${id}` } };
     }
 
     if (expedicao.status !== 'ativa') {
       return {
         status: 400,
         body: {
-          erro: `Expedicao do pedido ${expedicao.numeroPedido} nao esta ativa`,
+          erro: `Expedição do pedido ${expedicao.numeroPedido} não está ativa`,
           numeroPedido: expedicao.numeroPedido,
           statusAtual: expedicao.status
         }
       };
     }
 
+    if (empresa && String(expedicao.empresa || '').trim() && String(empresa).trim() !== String(expedicao.empresa).trim()) {
+      return {
+        status: 400,
+        body: {
+          erro: `Expedicao pertence a empresa '${expedicao.empresa}'. Voce enviou '${String(empresa).trim()}'.`
+        }
+      };
+    }
+
     const empresaResolvida = String(expedicao.empresa || empresa || '').trim();
     if (!empresaResolvida) {
-      return { status: 400, body: { erro: 'Expedicao sem empresa definida' } };
+      return { status: 400, body: { erro: 'Expedição sem empresa definida' } };
     }
 
     const pedidoOmie = await consultarPedidoVenda(expedicao.numeroPedido, empresaResolvida);
@@ -56,7 +71,7 @@ async function execute({ params, body }) {
           status: 400,
           body: {
             erro:
-              'O pedido possui itens sem numero de serie. Para finalizar, envie pelo menos 1 foto geral em /expedicao/fotos-gerais/upload.'
+              'O pedido possui itens sem número de série. Para finalizar, envie pelo menos 1 foto geral em /expedicao/fotos-gerais/upload.'
           }
         };
       }
@@ -101,7 +116,7 @@ async function execute({ params, body }) {
       if (claimed.count === 0) {
         throwBusiness(
           409,
-          'Conflito de concorrencia: expedicao foi alterada por outro usuario. Atualize e tente novamente.',
+          'Conflito de concorrência: expedição foi alterada por outro usuário. Atualize e tente novamente.',
           { code: 'CONCURRENCY_CONFLICT', detalhe: { recurso: 'Expedicao', expedicaoId: String(id) } }
         );
       }
@@ -113,7 +128,7 @@ async function execute({ params, body }) {
     console.error('Erro finalizarExpedicao:', err);
     return {
       status: 500,
-      body: { erro: 'Erro interno ao finalizar expedicao', detalhe: err.response?.data || err.message }
+      body: { erro: 'Erro interno ao finalizar expedição', detalhe: err.response?.data || err.message }
     };
   }
 }

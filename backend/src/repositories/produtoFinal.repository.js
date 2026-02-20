@@ -1,5 +1,12 @@
 const { prisma } = require('../database/prisma');
 
+function normalizeSerieDigits(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  const noZeros = digits.replace(/^0+/, '');
+  return noZeros || '0';
+}
+
 async function findFirstByOpId(opId, select) {
   return prisma.produtoFinal.findFirst({
     where: { opId: String(opId) },
@@ -43,9 +50,31 @@ async function findFirstCodProdutoOmieDaOp(opId) {
 }
 
 async function findBySerie(serie) {
-  return prisma.produtoFinal.findUnique({
-    where: { serie: String(serie) }
+  const raw = String(serie || '').trim();
+  if (!raw) return null;
+
+  const exact = await prisma.produtoFinal.findUnique({
+    where: { serie: raw }
   });
+  if (exact) return exact;
+
+  // Fallback para diferença de máscara/zeros à esquerda da série.
+  const normalized = normalizeSerieDigits(raw);
+  if (!normalized) return null;
+
+  const candidates = await prisma.produtoFinal.findMany({
+    where: {
+      OR: [
+        { serie: normalized },
+        { serie: { endsWith: normalized } }
+      ]
+    }
+  });
+
+  return (
+    candidates.find((row) => normalizeSerieDigits(row.serie) === normalized) ||
+    null
+  );
 }
 
 async function create(data) {

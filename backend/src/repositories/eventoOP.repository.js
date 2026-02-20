@@ -1,4 +1,3 @@
-// src/repositories/eventoOP.repository.js
 const { prisma } = require('../database/prisma');
 
 const TIPOS_CONTROLE = ['inicio', 'pausa', 'retorno', 'fim'];

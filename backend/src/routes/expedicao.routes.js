@@ -7,6 +7,6 @@ router.post('/:id/eventos', controller.adicionarEventoExpedicao);
 router.post('/:id/scan-serie', controller.scanSerie);
 router.post('/serie/:id/foto', controller.uploadFotoSerie);
 router.post('/:id/finalizar', controller.finalizarExpedicao);
-router.get('/:id/resumo', controller.resumoExpedicao);
+router.get('/:empresa/:numeroPedido/resumo', controller.resumoExpedicao);
 
 module.exports = router;

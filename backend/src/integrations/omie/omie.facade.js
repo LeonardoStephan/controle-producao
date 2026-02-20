@@ -8,14 +8,11 @@ const { consultarOrdemServico, baixarPecaEstoqueOmie } = require('./omie.os');
 module.exports = {
   consultarPedidoVenda,
   consultarEstoquePadrao,
-
   consultarEstruturaProduto,
   extrairSubprodutosDoBOM,
   obterObrigatoriosSubprodutosDoBOM,
   estruturaTemItem,
-
   validarProdutoExisteNoOmie,
-
   consultarOrdemServico,
   baixarPecaEstoqueOmie
 };

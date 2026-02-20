@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+﻿const crypto = require('crypto');
 const { prisma } = require('../../database/prisma');
 
 const expedicaoRepo = require('../../repositories/expedicao.repository');
@@ -7,14 +7,20 @@ const produtoFinalRepo = require('../../repositories/produtoFinal.repository');
 const { consultarPedidoVenda, consultarEstoquePadrao } = require('../../integrations/omie/omie.facade');
 const { produtoPossuiSerieNoSistema } = require('../../domain/expedicao.rules');
 const { conflictResponse, throwBusiness } = require('../../utils/httpErrors');
+const { validarFuncionarioAtivoNoSetor, SETOR_EXPEDICAO } = require('../../domain/setorManutencao');
 
 async function execute({ params, body }) {
   try {
     const { id } = params;
-    const { empresa, codProdutoOmie, serie } = body;
+    const { empresa, codProdutoOmie, serie, funcionarioId } = body;
 
-    if (!codProdutoOmie) {
-      return { status: 400, body: { erro: 'codProdutoOmie e obrigatorio' } };
+    if (!codProdutoOmie || !funcionarioId) {
+      return { status: 400, body: { erro: 'codProdutoOmie e funcionarioId são obrigatórios' } };
+    }
+
+    const checkFuncionario = await validarFuncionarioAtivoNoSetor(String(funcionarioId).trim(), SETOR_EXPEDICAO);
+    if (!checkFuncionario.ok) {
+      return { status: 403, body: { erro: checkFuncionario.erro } };
     }
 
     const expedicao = await expedicaoRepo.findByIdSelect(id, {
@@ -26,22 +32,31 @@ async function execute({ params, body }) {
     });
 
     if (!expedicao || expedicao.status !== 'ativa') {
-      return { status: 400, body: { erro: 'Expedicao invalida ou nao ativa' } };
+      return { status: 400, body: { erro: 'Expedição inválida ou não ativa' } };
+    }
+
+    if (empresa && String(expedicao.empresa || '').trim() && String(empresa).trim() !== String(expedicao.empresa).trim()) {
+      return {
+        status: 400,
+        body: {
+          erro: `Expedição pertence à empresa '${expedicao.empresa}'. Você enviou '${String(empresa).trim()}'.`
+        }
+      };
     }
 
     const empresaResolvida = String(expedicao.empresa || empresa || '').trim();
     if (!empresaResolvida) {
-      return { status: 400, body: { erro: 'Expedicao sem empresa definida' } };
+      return { status: 400, body: { erro: 'Expedição sem empresa definida' } };
     }
 
     const pedidoOmie = await consultarPedidoVenda(expedicao.numeroPedido, empresaResolvida);
     if (!pedidoOmie || !Array.isArray(pedidoOmie.itens) || pedidoOmie.itens.length === 0) {
-      return { status: 404, body: { erro: 'Pedido nao encontrado ou sem itens no Omie' } };
+      return { status: 404, body: { erro: 'Pedido não encontrado ou sem itens no Omie' } };
     }
 
     const itemPedido = pedidoOmie.itens.find((i) => i.codProdutoOmie === codProdutoOmie);
     if (!itemPedido) {
-      return { status: 400, body: { erro: 'Produto nao pertence ao pedido' } };
+      return { status: 400, body: { erro: 'Produto não pertence ao pedido' } };
     }
 
     const possuiSerie = await produtoPossuiSerieNoSistema(codProdutoOmie);
@@ -51,7 +66,7 @@ async function execute({ params, body }) {
         return {
           status: 400,
           body: {
-            erro: `Produto ${codProdutoOmie} nao possui numero de serie no sistema. Para este produto, nao envie "serie".`
+            erro: `Produto ${codProdutoOmie} não possui número de série no sistema. Para este produto, não envie "serie".`
           }
         };
       }
@@ -62,34 +77,34 @@ async function execute({ params, body }) {
           ok: true,
           tipo: 'sem_serie',
           mensagem:
-            'Produto sem numero de serie. Nao e necessario escanear unidades. Para finalizar, envie ao menos 1 foto geral em /expedicao/fotos-gerais/upload.'
+            'Produto sem número de série. Não é necessário escanear unidades. Para finalizar, envie ao menos 1 foto geral em /expedicao/fotos-gerais/upload.'
         }
       };
     }
 
     if (!serie) {
-      return { status: 400, body: { erro: 'Produto exige numero de serie' } };
+      return { status: 400, body: { erro: 'Produto exige número de série' } };
     }
 
     const produtoFinal = await produtoFinalRepo.findBySerie(serie);
     if (!produtoFinal) {
       return {
         status: 404,
-        body: { erro: 'Serie nao encontrada no cadastro de produtos (produza/registre antes no fluxo de producao)' }
+        body: { erro: 'Série não encontrada no cadastro de produtos (produza/registre antes no fluxo de produção)' }
       };
     }
 
     if (produtoFinal.codProdutoOmie !== codProdutoOmie) {
-      return { status: 400, body: { erro: 'Serie nao pertence a este produto' } };
+      return { status: 400, body: { erro: 'Série não pertence a este produto' } };
     }
 
     const estoquePadrao = await consultarEstoquePadrao(codProdutoOmie, empresaResolvida);
     if (!estoquePadrao) {
-      return { status: 502, body: { erro: 'Falha ao consultar estoque no Omie ou estoque padrao nao encontrado' } };
+      return { status: 502, body: { erro: 'Falha ao consultar estoque no Omie ou estoque padrão não encontrado' } };
     }
 
     if (Number(estoquePadrao.nSaldo) <= 0) {
-      return { status: 400, body: { erro: 'Produto sem saldo no estoque padrao' } };
+      return { status: 400, body: { erro: 'Produto sem saldo no estoque padrão' } };
     }
 
     const vinculo = await prisma.$transaction(async (tx) => {
@@ -101,7 +116,7 @@ async function execute({ params, body }) {
       if (claimed.count === 0) {
         throwBusiness(
           409,
-          'Conflito de concorrencia: expedicao foi alterada por outro usuario. Atualize e tente novamente.',
+          'Conflito de concorrência: expedição foi alterada por outro usuário. Atualize e tente novamente.',
           { code: 'CONCURRENCY_CONFLICT', detalhe: { recurso: 'Expedicao', expedicaoId: String(id) } }
         );
       }
@@ -115,7 +130,7 @@ async function execute({ params, body }) {
       });
 
       if (qtdComSerie >= Number(itemPedido.quantidade)) {
-        throwBusiness(400, `Quantidade maxima atingida para ${codProdutoOmie}`);
+        throwBusiness(400, `Quantidade máxima atingida para ${codProdutoOmie}`);
       }
 
       const serieJaExiste = await tx.expedicaoSerie.findFirst({
@@ -123,7 +138,7 @@ async function execute({ params, body }) {
       });
 
       if (serieJaExiste) {
-        throwBusiness(400, `Serie ${serie} ja foi utilizada no sistema`);
+        throwBusiness(400, `Série ${serie} já foi utilizada no sistema`);
       }
 
       return tx.expedicaoSerie.create({
@@ -141,14 +156,14 @@ async function execute({ params, body }) {
   } catch (err) {
     if (err?.isBusiness) return { status: err.status, body: err.body };
     if (err?.code === 'P2002') {
-      return conflictResponse('Conflito de concorrencia: serie ja vinculada na expedicao.', {
+      return conflictResponse('Conflito de concorrência: série já vinculada na expedição.', {
         recurso: 'ExpedicaoSerie',
         expedicaoId: String(params?.id || ''),
         serie: String(body?.serie || '')
       });
     }
     console.error('Erro scanSerie:', err);
-    return { status: 500, body: { erro: 'Erro interno ao escanear serie' } };
+    return { status: 500, body: { erro: 'Erro interno ao escanear série' } };
   }
 }
 

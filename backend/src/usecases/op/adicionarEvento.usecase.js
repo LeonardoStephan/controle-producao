@@ -1,4 +1,3 @@
-// src/usecases/op/adicionarEvento.usecase.js
 const crypto = require('crypto');
 const { prisma } = require('../../database/prisma');
 
@@ -7,11 +6,9 @@ const { validarSequenciaEvento } = require('../../domain/eventoSequencia');
 const { isDentroJornada } = require('../../domain/jornadaTrabalho');
 const ordemRepo = require('../../repositories/ordemProducao.repository');
 const { throwBusiness } = require('../../utils/httpErrors');
+const { validarFuncionarioAtivoNoSetor, SETOR_PRODUCAO } = require('../../domain/setorManutencao');
 
 async function execute(input = {}) {
-  // ✅ suporta dois formatos:
-  // 1) { id, tipo, funcionarioId }
-  // 2) { params: { id }, body: { tipo, funcionarioId } }
   const id = input?.id ?? input?.params?.id;
   const tipo = input?.tipo ?? input?.body?.tipo;
   const funcionarioId = input?.funcionarioId ?? input?.body?.funcionarioId;
@@ -28,7 +25,11 @@ async function execute(input = {}) {
     return { status: 400, body: { erro: 'funcionarioId é obrigatório' } };
   }
 
-  // inicio/fim não entram aqui
+  const checkFuncionario = await validarFuncionarioAtivoNoSetor(funcionarioId, SETOR_PRODUCAO);
+  if (!checkFuncionario.ok) {
+    return { status: 403, body: { erro: checkFuncionario.erro } };
+  }
+
   if (tipo === 'inicio' || tipo === 'fim') {
     return {
       status: 400,
@@ -49,10 +50,14 @@ async function execute(input = {}) {
       });
 
       if (claimed.count === 0) {
-        throwBusiness(409, 'Conflito de concorrencia: OP foi alterada por outro usuario. Atualize e tente novamente.', {
-          code: 'CONCURRENCY_CONFLICT',
-          detalhe: { recurso: 'OrdemProducao', opId: String(id), etapa: String(etapaAtual) }
-        });
+        throwBusiness(
+          409,
+          'Conflito de concorrência: OP foi alterada por outro usuário. Atualize e tente novamente.',
+          {
+            code: 'CONCURRENCY_CONFLICT',
+            detalhe: { recurso: 'OrdemProducao', opId: String(id), etapa: String(etapaAtual) }
+          }
+        );
       }
 
       const ultimoEvento = await tx.eventoOP.findFirst({
@@ -100,3 +105,4 @@ async function execute(input = {}) {
 }
 
 module.exports = { execute };
+

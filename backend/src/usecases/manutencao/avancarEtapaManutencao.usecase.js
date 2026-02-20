@@ -1,99 +1,163 @@
-const crypto = require('crypto');
+﻿const crypto = require('crypto');
 const { prisma } = require('../../database/prisma');
 const manutencaoRepo = require('../../repositories/manutencao.repository');
+const manutencaoSerieRepo = require('../../repositories/manutencaoSerie.repository');
 const {
   FLUXO_MANUTENCAO,
   STATUS_TERMINAIS_MANUTENCAO,
   podeAvancar,
   proximoStatus
 } = require('../../domain/fluxoManutencao');
+const { validarSetorDoFuncionarioAsync } = require('../../domain/setorManutencao');
 const { formatDateTimeBr } = require('../../utils/dateBr');
+const { viaOndaTemEtiqueta } = require('../../integrations/viaonda/viaonda.facade');
 
 function montarResumoManutencao(manutencao) {
-  return {
+  const resumo = {
     id: manutencao.id,
     numeroOS: manutencao.numeroOS,
-    empresa: manutencao.empresa,
     status: manutencao.status,
-    funcionarioAtualId: manutencao.funcionarioAtualId,
-    serieProduto: manutencao.serieProduto,
     codProdutoOmie: manutencao.codProdutoOmie,
-    clienteNome: manutencao.clienteNome,
-    defeitoRelatado: manutencao.defeitoRelatado,
-    diagnostico: manutencao.diagnostico,
-    emGarantia: manutencao.emGarantia,
-    aprovadoOrcamento: manutencao.aprovadoOrcamento,
-    dataEntrada: formatDateTimeBr(manutencao.dataEntrada, { withDash: true }),
-    dataAprovacao: formatDateTimeBr(manutencao.dataAprovacao, { withDash: true }),
-    dataFinalizacao: formatDateTimeBr(manutencao.dataFinalizacao, { withDash: true })
+    dataEntrada: formatDateTimeBr(manutencao.dataEntrada, { withDash: true })
   };
+
+  if (manutencao.emGarantia !== null && manutencao.emGarantia !== undefined) {
+    resumo.emGarantia = manutencao.emGarantia;
+  }
+  if (manutencao.aprovadoOrcamento !== null && manutencao.aprovadoOrcamento !== undefined) {
+    resumo.aprovadoOrcamento = manutencao.aprovadoOrcamento;
+  }
+  if (manutencao.diagnostico) resumo.diagnostico = manutencao.diagnostico;
+  if (manutencao.dataAprovacao) {
+    resumo.dataAprovacao = formatDateTimeBr(manutencao.dataAprovacao, { withDash: true });
+  }
+  if (manutencao.dataFinalizacao) {
+    resumo.dataFinalizacao = formatDateTimeBr(manutencao.dataFinalizacao, { withDash: true });
+  }
+
+  return resumo;
 }
 
 async function execute({ params, body }) {
   const { id } = params;
-  const {
-    status,
-    funcionarioId,
-    observacao,
-    emGarantia,
-    aprovadoOrcamento,
-    diagnostico
-  } = body;
+  const { status, funcionarioId, observacao, emGarantia, aprovadoOrcamento, diagnostico } = body;
 
   if (!id || !status || !funcionarioId) {
-    return { status: 400, body: { erro: 'id, status e funcionarioId sao obrigatorios' } };
+    return { status: 400, body: { erro: 'id, status e funcionarioId são obrigatórios' } };
   }
 
   const manutencao = await manutencaoRepo.findById(String(id));
-  if (!manutencao) return { status: 404, body: { erro: 'Manutencao nao encontrada' } };
+  if (!manutencao) return { status: 404, body: { erro: 'Manutenção não encontrada' } };
 
   if (STATUS_TERMINAIS_MANUTENCAO.includes(manutencao.status)) {
-    return { status: 400, body: { erro: `Manutencao ja esta encerrada em '${manutencao.status}'` } };
+    return { status: 400, body: { erro: `Manutenção já está encerrada em '${manutencao.status}'` } };
   }
 
-  const prox = String(status).trim();
-  const isTerminal = STATUS_TERMINAIS_MANUTENCAO.includes(prox);
+  const exigeSerie = manutencao.codProdutoOmie
+    ? await viaOndaTemEtiqueta(manutencao.codProdutoOmie, manutencao.empresa)
+    : false;
+  const totalSeries = (await manutencaoSerieRepo.findByManutencaoId(String(id))).length;
+  if (exigeSerie === true && totalSeries === 0) {
+    return {
+      status: 400,
+      body: {
+        erro: 'Produto desta Manutenção exige série. Escaneie a série antes de avançar etapa.',
+        codProdutoOmie: manutencao.codProdutoOmie,
+        statusAtual: manutencao.status,
+        dica: "Use POST /manutencao/:id/scan-serie com { serieProduto, funcionarioId }"
+      }
+    };
+  }
+
+  const proxRaw = String(status).trim();
+  const prox = proxRaw === 'devolucao' ? 'devolvida' : proxRaw;
   const isFluxo = FLUXO_MANUTENCAO.includes(prox);
-
-  if (!isTerminal && !isFluxo) {
-    return { status: 400, body: { erro: 'Status de manutencao invalido' } };
+  if (!isFluxo) {
+    return { status: 400, body: { erro: 'Status de Manutenção inválido' } };
   }
 
-  const permitido = isTerminal || podeAvancar(manutencao.status, prox);
+  const validacaoSetor = await validarSetorDoFuncionarioAsync(funcionarioId, prox);
+  if (!validacaoSetor.ok) {
+    console.info('[manutencao.avancar] bloqueado_setor', {
+      manutencaoId: String(id),
+      funcionarioId: String(funcionarioId).trim(),
+      statusAtual: manutencao.status,
+      statusDestino: prox,
+      setorEsperado: validacaoSetor.esperado || null,
+      setorRecebido: validacaoSetor.recebido || null
+    });
+    return {
+      status: 403,
+      body: validacaoSetor.erro
+        ? { erro: validacaoSetor.erro }
+        : {
+            erro: `A etapa '${prox}' só pode ser executada pelo setor '${validacaoSetor.esperado}'`,
+            setorRecebido: validacaoSetor.recebido
+          }
+    };
+  }
+
+  const permitido = podeAvancar(manutencao.status, prox);
   if (!permitido) {
     const esperado = proximoStatus(manutencao.status);
     return {
       status: 400,
       body: {
-        erro: `Transicao invalida: '${manutencao.status}' -> '${prox}'`,
+        erro: `Transição inválida: '${manutencao.status}' -> '${prox}'`,
         statusAtual: manutencao.status,
         proximoStatusEsperado: esperado,
         dica: esperado
           ? `Use primeiro status='${esperado}' em /manutencao/:id/avancar`
-          : 'Manutencao em etapa terminal. Nao ha proximo status no fluxo.'
+          : 'Manutenção em etapa terminal. não há próximo status no fluxo.'
       }
     };
   }
 
-  // obrigatorio definir garantia ao sair da avaliacao
-  if (manutencao.status === 'avaliacao_garantia' && emGarantia === undefined) {
+  if (prox === 'avaliacao_garantia' && emGarantia === undefined) {
     return {
       status: 400,
-      body: { erro: 'Informe emGarantia (true/false) para avancar apos avaliacao_garantia' }
+      body: { erro: 'Informe emGarantia (true/false) na etapa avaliacao_garantia' }
     };
   }
 
-  const emGarantiaResolvido =
-    emGarantia === undefined ? manutencao.emGarantia : Boolean(emGarantia);
+  if (prox !== 'avaliacao_garantia' && emGarantia !== undefined) {
+    return {
+      status: 400,
+      body: { erro: 'emGarantia so pode ser informado na etapa avaliacao_garantia' }
+    };
+  }
+
+  const emGarantiaResolvido = emGarantia === undefined ? manutencao.emGarantia : Boolean(emGarantia);
   const aprovadoResolvido =
     aprovadoOrcamento === undefined ? manutencao.aprovadoOrcamento : Boolean(aprovadoOrcamento);
 
-  // sem garantia, so pode entrar em reparo se orcamento estiver aprovado
+  if (
+    manutencao.status === 'aguardando_aprovacao' &&
+    emGarantiaResolvido === false &&
+    aprovadoResolvido === false &&
+    !['devolvida', 'descarte'].includes(prox)
+  ) {
+    return {
+      status: 400,
+      body: { erro: "Quando o cliente não aprova, avance para 'devolvida' ou 'descarte'." }
+    };
+  }
+
   if (prox === 'reparo' && emGarantiaResolvido === false && aprovadoResolvido !== true) {
     return {
       status: 400,
+      body: { erro: 'Para Manutenção fora de garantia, aprovadoOrcamento=true é obrigatório antes do reparo' }
+    };
+  }
+
+  if (
+    (prox === 'devolvida' || prox === 'descarte') &&
+    !(emGarantiaResolvido === false && aprovadoResolvido === false)
+  ) {
+    return {
+      status: 400,
       body: {
-        erro: 'Para manutencao fora de garantia, aprovadoOrcamento=true e obrigatorio antes do reparo'
+        erro: `'${prox}' só é permitido para Manutenção fora de garantia e sem aprovação de orçamento.`
       }
     };
   }
@@ -101,7 +165,7 @@ async function execute({ params, body }) {
   if (prox === 'finalizada') {
     return {
       status: 400,
-      body: { erro: "Use o endpoint '/manutencao/:id/finalizar' para concluir a manutencao" }
+      body: { erro: "Use o endpoint '/manutencao/:id/finalizar' para concluir a Manutenção" }
     };
   }
 
@@ -118,14 +182,11 @@ async function execute({ params, body }) {
           aprovadoOrcamento: aprovadoResolvido,
           diagnostico: diagnostico === undefined ? manutencao.diagnostico : String(diagnostico || ''),
           dataAprovacao:
-            prox === 'reparo' && aprovadoResolvido === true ? new Date() : manutencao.dataAprovacao,
-          dataFinalizacao: prox === 'finalizada' ? new Date() : manutencao.dataFinalizacao
+            prox === 'reparo' && aprovadoResolvido === true ? new Date() : manutencao.dataAprovacao
         }
       });
 
-      if (claimed.count === 0) {
-        return null;
-      }
+      if (claimed.count === 0) return null;
 
       await tx.manutencaoEvento.create({
         data: {
@@ -133,6 +194,7 @@ async function execute({ params, body }) {
           manutencaoId: String(id),
           tipo: `status_${prox}`,
           funcionarioId: String(funcionarioId).trim(),
+          setor: validacaoSetor.setor,
           observacao: observacao ? String(observacao) : null
         }
       });
@@ -143,25 +205,33 @@ async function execute({ params, body }) {
     if (!atualizado) {
       return {
         status: 409,
-      body: {
-        erro: 'Conflito de concorrencia: manutencao foi alterada por outro usuario. Atualize e tente novamente.',
-        code: 'CONCURRENCY_CONFLICT',
+        body: {
+          erro: 'Conflito de concorrência: Manutenção foi alterada por outro usuário. Atualize e tente novamente.',
+          code: 'CONCURRENCY_CONFLICT',
           detalhe: { recurso: 'Manutencao', manutencaoId: String(id) }
         }
       };
     }
 
+    console.info('[manutencao.avancar] sucesso', {
+      manutencaoId: String(id),
+      funcionarioId: String(funcionarioId).trim(),
+      setor: validacaoSetor.setor,
+      statusAnterior,
+      statusNovo: atualizado.status
+    });
+
     return {
       status: 200,
       body: {
         ok: true,
-        mensagem: `Manutencao avancou de '${statusAnterior}' para '${atualizado.status}'`,
+        mensagem: `Manutenção avançou de '${statusAnterior}' para '${atualizado.status}'`,
         manutencao: montarResumoManutencao(atualizado)
       }
     };
   } catch (err) {
     console.error('Erro avancarEtapaManutencao:', err);
-    return { status: 500, body: { erro: 'Erro interno ao avancar etapa da manutencao' } };
+    return { status: 500, body: { erro: 'Erro interno ao avançar etapa da Manutenção' } };
   }
 }
 

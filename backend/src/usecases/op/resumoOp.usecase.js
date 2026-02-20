@@ -1,9 +1,9 @@
-// src/usecases/op/resumoOp.usecase.js
-const ordemRepo = require('../../repositories/ordemProducao.repository');
+﻿const ordemRepo = require('../../repositories/ordemProducao.repository');
 const eventoRepo = require('../../repositories/eventoOP.repository');
 const { FLUXO_ETAPAS } = require('../../domain/fluxoOp');
 const { formatDateTimeBr } = require('../../utils/dateBr');
 const { calcularMsDentroJornada } = require('../../domain/jornadaTrabalho');
+const { carregarMapaNomePorCracha, nomePorCrachaOuOriginal } = require('../../utils/funcionarioNome');
 
 function formatarDuracao(ms) {
   const totalSeg = Math.floor(ms / 1000);
@@ -55,13 +55,22 @@ function calcularTempoPorEtapaMs(eventos) {
 }
 
 async function execute({ params }) {
-  const { id } = params;
+  const empresa = String(params?.empresa || '').trim();
+  const numeroOP = String(params?.numeroOP || '').trim();
+
+  if (!empresa || !numeroOP) {
+    return { status: 400, body: { erro: 'empresa e numeroOP são obrigatórios' } };
+  }
 
   try {
-    const op = await ordemRepo.findById(id);
+    const op = await ordemRepo.findByNumeroOP(numeroOP);
     if (!op) return { status: 404, body: { erro: 'OP não encontrada' } };
 
-    const eventos = await eventoRepo.findAllByOpId(id);
+    if (String(op.empresa || '').trim() !== empresa) {
+      return { status: 404, body: { erro: 'OP não encontrada para a empresa informada' } };
+    }
+
+    const eventos = await eventoRepo.findAllByOpId(op.id);
     if (!eventos.length) {
       // OP existe mas sem eventos ainda
       const temposPorEtapa = {};
@@ -94,6 +103,8 @@ async function execute({ params }) {
       temposPorEtapa[etapa] = formatarDuracao(temposMs[etapa]);
     }
 
+    const mapaNomes = await carregarMapaNomePorCracha((eventos || []).map((e) => e.funcionarioId));
+
     return {
       status: 200,
       body: {
@@ -108,6 +119,8 @@ async function execute({ params }) {
         temposPorEtapa,
         eventos: eventos.map((e) => ({
           ...e,
+          funcionarioCracha: e.funcionarioId,
+          funcionarioNome: nomePorCrachaOuOriginal(e.funcionarioId, mapaNomes),
           criadoEm: formatDateTimeBr(e.criadoEm, { withDash: true })
         }))
       }

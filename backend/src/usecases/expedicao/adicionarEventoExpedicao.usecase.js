@@ -3,6 +3,7 @@ const { prisma } = require('../../database/prisma');
 const { validarSequenciaEvento } = require('../../domain/eventoSequencia');
 const { isDentroJornada } = require('../../domain/jornadaTrabalho');
 const { throwBusiness } = require('../../utils/httpErrors');
+const { validarFuncionarioAtivoNoSetor, SETOR_EXPEDICAO } = require('../../domain/setorManutencao');
 
 const TIPOS_EVENTO_EXPEDICAO = ['pausa', 'retorno'];
 
@@ -13,15 +14,20 @@ async function execute({ params, body }) {
   if (!tipo || !funcionarioId) {
     return {
       status: 400,
-      body: { erro: 'tipo e funcionarioId sao obrigatorios' }
+      body: { erro: 'tipo e funcionarioId são obrigatórios' }
     };
   }
 
   if (!TIPOS_EVENTO_EXPEDICAO.includes(tipo)) {
     return {
       status: 400,
-      body: { erro: 'Tipo de evento invalido' }
+      body: { erro: 'Tipo de evento inválido' }
     };
+  }
+
+  const checkFuncionario = await validarFuncionarioAtivoNoSetor(funcionarioId, SETOR_EXPEDICAO);
+  if (!checkFuncionario.ok) {
+    return { status: 403, body: { erro: checkFuncionario.erro } };
   }
 
   const expedicao = await prisma.expedicao.findUnique({
@@ -32,7 +38,7 @@ async function execute({ params, body }) {
   if (!expedicao || expedicao.status !== 'ativa') {
     return {
       status: 400,
-      body: { erro: 'Expedicao invalida ou nao ativa' }
+      body: { erro: 'Expedição inválida ou não ativa' }
     };
   }
 
@@ -46,7 +52,7 @@ async function execute({ params, body }) {
       if (claimed.count === 0) {
         throwBusiness(
           409,
-          'Conflito de concorrencia: expedicao foi alterada por outro usuario. Atualize e tente novamente.',
+          'Conflito de concorrência: expedição foi alterada por outro usuário. Atualize e tente novamente.',
           { code: 'CONCURRENCY_CONFLICT', detalhe: { recurso: 'Expedicao', expedicaoId: String(id) } }
         );
       }
@@ -89,9 +95,10 @@ async function execute({ params, body }) {
     console.error('Erro adicionarEventoExpedicao:', err);
     return {
       status: 500,
-      body: { erro: 'Erro interno ao adicionar evento da expedicao' }
+      body: { erro: 'Erro interno ao adicionar evento da expedição' }
     };
   }
 }
 
 module.exports = { execute };
+

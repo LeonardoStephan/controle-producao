@@ -36,6 +36,26 @@ function extrairDescricaoProduto(payload) {
   ).trim();
 }
 
+function extrairFamiliaProduto(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+
+  const candidatos = [
+    payload.descrFam,
+    payload.descricao_familia,
+    payload.descricaoFamilia,
+    payload.familia,
+    payload.familia_produto,
+    payload.cDescricaoFamilia
+  ];
+
+  for (const valor of candidatos) {
+    const txt = String(valor || '').trim();
+    if (txt) return txt;
+  }
+
+  return '';
+}
+
 async function validarProdutoExisteNoOmie(codProduto, empresa) {
   const cod = String(codProduto || '').trim();
   const emp = String(empresa || '').trim();
@@ -71,32 +91,50 @@ async function consultarProdutoNoOmie(codProduto, empresa) {
   const cached = produtoCache.get(key);
   if (cached && cached.expiresAt > now) return cached.value;
 
-  const resp = await postOmie({
-    endpoint: ENDPOINT_PRODUTOS,
-    empresa: emp,
-    call: 'ConsultarProduto',
-    param: [{ codigo: cod }],
-    timeout: 40000
-  });
-
-  if (!resp.ok) {
-    if (resp.error?.isNotFound) return null;
-    throw new Error('FALHA_OMIE_CONSULTAR_PRODUTO');
+  const tentativas = [{ codigo: cod }];
+  if (/^\d+$/.test(cod)) {
+    const n = Number(cod);
+    if (Number.isFinite(n)) {
+      tentativas.push({ nCodProd: n });
+      tentativas.push({ nCodProduto: n });
+    }
   }
 
-  const payload = extrairPayloadProduto(resp.data);
-  const codigoResp = extrairCodigoProduto(payload);
-  if (!codigoResp) return null;
+  let lastNonNotFoundError = null;
+  for (const p of tentativas) {
+    const resp = await postOmie({
+      endpoint: ENDPOINT_PRODUTOS,
+      empresa: emp,
+      call: 'ConsultarProduto',
+      param: [p],
+      timeout: 40000
+    });
 
-  const descricao = extrairDescricaoProduto(payload);
+    if (!resp.ok) {
+      if (resp.error?.isNotFound) continue;
+      lastNonNotFoundError = resp.error;
+      continue;
+    }
 
-  const value = {
-    codigo: codigoResp,
-    descricao: descricao || null
-  };
+    const payload = extrairPayloadProduto(resp.data);
+    const codigoResp = extrairCodigoProduto(payload);
+    if (!codigoResp) continue;
 
-  produtoCache.set(key, { value, expiresAt: now + CACHE_TTL_MS });
-  return value;
+    const descricao = extrairDescricaoProduto(payload);
+    const value = {
+      codigo: codigoResp,
+      descricao: descricao || null,
+      familia: extrairFamiliaProduto(payload) || null
+    };
+
+    produtoCache.set(key, { value, expiresAt: now + CACHE_TTL_MS });
+    return value;
+  }
+
+  if (lastNonNotFoundError) {
+    throw new Error('FALHA_OMIE_CONSULTAR_PRODUTO');
+  }
+  return null;
 }
 
 module.exports = { validarProdutoExisteNoOmie, consultarProdutoNoOmie };

@@ -1,16 +1,21 @@
-// src/usecases/peca/substituirPeca.usecase.js
-const crypto = require('crypto');
+﻿const crypto = require('crypto');
 const { prisma } = require('../../database/prisma');
 
 const consumoPecaRepo = require('../../repositories/consumoPeca.repository');
 const subprodutoRepo = require('../../repositories/subproduto.repository');
 const { extrairCodigoDaPecaDoQr, extrairQrId } = require('../../utils/pecaQr');
+const { validarFuncionarioAtivoNoSetor, SETOR_PRODUCAO } = require('../../domain/setorManutencao');
 
 async function execute(body) {
   const { subprodutoEtiqueta, serieProdFinalId, codigoPeca, novoQrCode, funcionarioId } = body;
 
   if ((!subprodutoEtiqueta && !serieProdFinalId) || !codigoPeca || !novoQrCode || !funcionarioId) {
     return { status: 400, body: { erro: 'Dados obrigatórios ausentes' } };
+  }
+
+  const checkFuncionario = await validarFuncionarioAtivoNoSetor(String(funcionarioId).trim(), SETOR_PRODUCAO);
+  if (!checkFuncionario.ok) {
+    return { status: 403, body: { erro: checkFuncionario.erro } };
   }
 
   const codigoExtraidoNovo = extrairCodigoDaPecaDoQr(novoQrCode);

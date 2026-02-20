@@ -46,7 +46,7 @@ describe('OP finalizarEtapa - concorrencia', () => {
     produtoFinalRepo.existsAnyByOpId.mockResolvedValue(true);
   }
 
-  test('deve retornar 409 quando houver conflito de concorrencia no update de status', async () => {
+  test('deve retornar 409 quando houver conflito de concorrência no update de status', async () => {
     mockBase();
 
     prisma.$transaction.mockImplementation(async (cb) =>
@@ -62,7 +62,7 @@ describe('OP finalizarEtapa - concorrencia', () => {
     });
 
     expect(result.status).toBe(409);
-    expect(result.body.erro).toMatch(/Conflito de concorrencia/i);
+    expect(result.body.erro).toMatch(/Conflito de concorr[eê]ncia/i);
     expect(result.body.code).toBe('CONCURRENCY_CONFLICT');
     expect(result.body.detalhe).toBeTruthy();
   });

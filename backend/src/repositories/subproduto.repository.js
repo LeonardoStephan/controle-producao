@@ -1,4 +1,3 @@
-// src/repositories/subproduto.repository.js
 const { prisma } = require('../database/prisma');
 
 async function findManyByOpId(opId) {
@@ -41,6 +40,13 @@ async function listEtiquetasByOpId(opId) {
   return rows.map((r) => String(r.etiquetaId).trim()).filter(Boolean);
 }
 
+async function findManyBySerieProdFinalId(serieProdFinalId) {
+  return prisma.subproduto.findMany({
+    where: { serieProdFinalId: String(serieProdFinalId) },
+    select: { id: true, etiquetaId: true, codigoSubproduto: true }
+  });
+}
+
 async function create(data) {
   return prisma.subproduto.create({ data });
 }
@@ -59,15 +65,23 @@ async function countRegistradosNaOp(opId) {
 }
 
 async function countConsumidosNaOpAgrupado(opId) {
-  const rows = await prisma.subproduto.groupBy({
-    by: ['codigoSubproduto'],
-    where: { opId: String(opId), serieProdFinalId: { not: null } },
-    _count: { _all: true }
+  // Importante:
+  // Subproduto.opId representa a OP de origem do subproduto (ex.: OP da placa).
+  // Para validar consumo na OP final, precisamos contar os subprodutos vinculados
+  // aos produtos finais da OP final (via relação serieProdFinalId -> ProdutoFinal.opId).
+  const rows = await prisma.subproduto.findMany({
+    where: {
+      serieProdFinalId: { not: null },
+      produtoFinal: { opId: String(opId) }
+    },
+    select: { codigoSubproduto: true }
   });
 
   const map = {};
   for (const r of rows) {
-    map[String(r.codigoSubproduto).trim()] = Number(r._count._all || 0);
+    const key = String(r.codigoSubproduto || '').trim();
+    if (!key) continue;
+    map[key] = Number(map[key] || 0) + 1;
   }
   return map;
 }
@@ -82,5 +96,6 @@ module.exports = {
   countRegistradosNaOp,
   countConsumidosNaOpAgrupado,
   findById,
-  listEtiquetasByOpId
+  listEtiquetasByOpId,
+  findManyBySerieProdFinalId
 };

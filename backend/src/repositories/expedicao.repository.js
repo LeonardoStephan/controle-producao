@@ -43,12 +43,53 @@ async function findByIdSelect(id, select) {
   });
 }
 
+async function findResumoByNumeroPedidoEmpresa(numeroPedido, empresa) {
+  return prisma.expedicao.findFirst({
+    where: {
+      numeroPedido: String(numeroPedido),
+      empresa: String(empresa)
+    },
+    include: {
+      eventos: { orderBy: { criadoEm: 'asc' } },
+      series: { include: { fotos: true } },
+      fotosGerais: { orderBy: { criadoEm: 'asc' } }
+    },
+    orderBy: { iniciadoEm: 'desc' }
+  });
+}
+
+async function findUltimaExpedicaoBySerie(serie) {
+  const serieNorm = String(serie || '').trim();
+  if (!serieNorm) return null;
+
+  const rows = await prisma.expedicao.findMany({
+    where: {
+      series: {
+        some: { serie: serieNorm }
+      }
+    },
+    orderBy: { iniciadoEm: 'desc' },
+    take: 1,
+    select: {
+      id: true,
+      numeroPedido: true,
+      empresa: true,
+      status: true,
+      iniciadoEm: true
+    }
+  });
+
+  return rows[0] || null;
+}
+
 
 module.exports = {
   findAtivaByNumeroPedido,
   findByIdIncludeSeries,
   findResumoById,
+  findResumoByNumeroPedidoEmpresa,
   create,
   update,
-  findByIdSelect
+  findByIdSelect,
+  findUltimaExpedicaoBySerie
 };
