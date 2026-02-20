@@ -1,4 +1,4 @@
-jest.mock('../src/database/prisma', () => ({
+﻿jest.mock('../src/database/prisma', () => ({
   prisma: {
     $transaction: jest.fn()
   }
@@ -6,6 +6,11 @@ jest.mock('../src/database/prisma', () => ({
 
 jest.mock('../src/repositories/ordemProducao.repository', () => ({
   findById: jest.fn()
+}));
+
+jest.mock('../src/domain/setorManutencao', () => ({
+  SETOR_PRODUCAO: 'producao',
+  validarFuncionarioAtivoNoSetor: jest.fn().mockResolvedValue({ ok: true })
 }));
 
 const { prisma } = require('../src/database/prisma');
@@ -17,7 +22,7 @@ describe('OP adicionarEvento - concorrencia', () => {
     jest.clearAllMocks();
   });
 
-  test('deve retornar 409 quando houver conflito de concorrência (version/status mudou)', async () => {
+  test('deve retornar 409 quando houver conflito de concorrÃªncia (version/status mudou)', async () => {
     ordemRepo.findById.mockResolvedValue({
       id: 'op-1',
       status: 'montagem',
@@ -42,12 +47,12 @@ describe('OP adicionarEvento - concorrencia', () => {
     });
 
     expect(result.status).toBe(409);
-    expect(result.body.erro).toMatch(/Conflito de concorrencia/i);
+    expect(result.body.erro).toMatch(/Conflito de concorr[eê]ncia/i);
     expect(result.body.code).toBe('CONCURRENCY_CONFLICT');
     expect(result.body.detalhe).toBeTruthy();
   });
 
-  test('deve retornar 200 quando não houver conflito e sequência for válida', async () => {
+  test('deve retornar 200 quando nÃ£o houver conflito e sequÃªncia for vÃ¡lida', async () => {
     ordemRepo.findById.mockResolvedValue({
       id: 'op-1',
       status: 'montagem',

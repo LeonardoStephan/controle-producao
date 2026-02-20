@@ -1,3 +1,9 @@
+﻿jest.mock('../src/domain/setorManutencao', () => ({
+  SETOR_MANUTENCAO: 'manutencao',
+  obterSetorPorFuncionarioAsync: jest.fn().mockResolvedValue('manutencao'),
+  validarFuncionarioAtivoNoSetor: jest.fn().mockResolvedValue({ ok: true })
+}));
+
 jest.mock('../src/repositories/manutencao.repository', () => ({
   findById: jest.fn()
 }));
@@ -7,6 +13,7 @@ jest.mock('../src/repositories/manutencaoPecaTrocada.repository', () => ({
   existeHistoricoComQr: jest.fn(),
   findQrAtivo: jest.fn(),
   findQrIdAtivo: jest.fn(),
+  findQrIdAny: jest.fn(),
   encerrarAtivaPorId: jest.fn(),
   create: jest.fn()
 }));
@@ -22,7 +29,8 @@ jest.mock('../src/repositories/manutencaoEvento.repository', () => ({
 jest.mock('../src/repositories/consumoPeca.repository', () => ({
   existeHistoricoComQr: jest.fn(),
   findQrAtivo: jest.fn(),
-  findQrIdAtivo: jest.fn()
+  findQrIdAtivo: jest.fn(),
+  findQrIdAny: jest.fn()
 }));
 
 jest.mock('../src/repositories/subproduto.repository', () => ({
@@ -72,6 +80,7 @@ describe('Manutencao - registrar peca validacoes', () => {
     manutencaoPecaRepo.existeHistoricoComQr.mockResolvedValue(false);
     manutencaoPecaRepo.findQrAtivo.mockResolvedValue(null);
     manutencaoPecaRepo.findQrIdAtivo.mockResolvedValue(null);
+    manutencaoPecaRepo.findQrIdAny.mockResolvedValue(null);
     manutencaoPecaRepo.create.mockResolvedValue({
       id: 'peca-1',
       codigoPeca: 'MOD_RTC',
@@ -87,6 +96,7 @@ describe('Manutencao - registrar peca validacoes', () => {
     consumoPecaRepo.existeHistoricoComQr.mockResolvedValue(false);
     consumoPecaRepo.findQrAtivo.mockResolvedValue(null);
     consumoPecaRepo.findQrIdAtivo.mockResolvedValue(null);
+    consumoPecaRepo.findQrIdAny.mockResolvedValue(null);
     estruturaTemItem.mockResolvedValue(true);
     consultarProdutoNoOmie.mockResolvedValue({ descricao: 'Produto teste' });
   });
@@ -120,11 +130,12 @@ describe('Manutencao - registrar peca validacoes', () => {
     });
 
     expect(result.status).toBe(400);
-    expect(result.body.erro).toMatch(/nao corresponde ao codigo da peca/i);
+    expect(result.body.erro).toMatch(/não corresponde ao código da peça/i);
   });
 
   test('bloqueia quando qrId ja esta ativo na producao', async () => {
     consumoPecaRepo.findQrIdAtivo.mockResolvedValue({ id: 'cons-1', qrId: 'ID:1770380730990' });
+    consumoPecaRepo.findQrIdAny.mockResolvedValue({ id: 'cons-1', qrId: 'ID:1770380730990' });
 
     const result = await usecase.execute({
       params: { id: 'man-1' },
@@ -136,6 +147,6 @@ describe('Manutencao - registrar peca validacoes', () => {
     });
 
     expect(result.status).toBe(400);
-    expect(result.body.erro).toMatch(/ID de QR ja utilizado na producao/i);
+    expect(result.body.erro).toMatch(/ID de QR já utilizado na produção/i);
   });
 });

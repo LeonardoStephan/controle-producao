@@ -1,4 +1,4 @@
-jest.mock('../src/repositories/ordemProducao.repository', () => ({
+﻿jest.mock('../src/repositories/ordemProducao.repository', () => ({
   findById: jest.fn()
 }));
 
@@ -172,7 +172,7 @@ describe('Consistencia - regras de validacao', () => {
     });
 
     expect(result.status).toBe(400);
-    expect(result.body.erro).toMatch(/pertence a empresa/i);
+    expect(result.body.erro).toMatch(/pertence a empresa|pertence à empresa/i);
   });
 });
 

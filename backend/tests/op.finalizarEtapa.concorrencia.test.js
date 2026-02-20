@@ -1,4 +1,4 @@
-jest.mock('../src/database/prisma', () => ({
+﻿jest.mock('../src/database/prisma', () => ({
   prisma: {
     $transaction: jest.fn()
   }
@@ -6,6 +6,11 @@ jest.mock('../src/database/prisma', () => ({
 
 jest.mock('../src/repositories/ordemProducao.repository', () => ({
   findById: jest.fn()
+}));
+
+jest.mock('../src/domain/setorManutencao', () => ({
+  SETOR_PRODUCAO: 'producao',
+  validarFuncionarioAtivoNoSetor: jest.fn().mockResolvedValue({ ok: true })
 }));
 
 jest.mock('../src/repositories/eventoOP.repository', () => ({
@@ -46,7 +51,7 @@ describe('OP finalizarEtapa - concorrencia', () => {
     produtoFinalRepo.existsAnyByOpId.mockResolvedValue(true);
   }
 
-  test('deve retornar 409 quando houver conflito de concorrência no update de status', async () => {
+  test('deve retornar 409 quando houver conflito de concorrÃªncia no update de status', async () => {
     mockBase();
 
     prisma.$transaction.mockImplementation(async (cb) =>

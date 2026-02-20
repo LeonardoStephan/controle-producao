@@ -1,4 +1,4 @@
-jest.mock('../src/database/prisma', () => ({
+﻿jest.mock('../src/database/prisma', () => ({
   prisma: {
     $transaction: jest.fn()
   }
@@ -15,6 +15,12 @@ jest.mock('../src/repositories/produtoFinal.repository', () => ({
 jest.mock('../src/integrations/omie/omie.facade', () => ({
   consultarPedidoVenda: jest.fn(),
   consultarEstoquePadrao: jest.fn()
+}));
+
+
+jest.mock('../src/domain/setorManutencao', () => ({
+  SETOR_EXPEDICAO: 'expedicao',
+  validarFuncionarioAtivoNoSetor: jest.fn().mockResolvedValue({ ok: true })
 }));
 
 jest.mock('../src/domain/expedicao.rules', () => ({
@@ -55,7 +61,7 @@ describe('Expedicao scan-serie - concorrencia', () => {
     consultarEstoquePadrao.mockResolvedValue({ nSaldo: 10 });
   }
 
-  test('deve retornar 409 quando houver conflito de concorrência no claim da expedicao', async () => {
+  test('deve retornar 409 quando houver conflito de concorrÃªncia no claim da expedicao', async () => {
     mockBase();
 
     prisma.$transaction.mockImplementation(async (cb) =>
@@ -76,7 +82,8 @@ describe('Expedicao scan-serie - concorrencia', () => {
       body: {
         codProdutoOmie: 'M-ID12L',
         serie: '3014980',
-        empresa: 'marchi'
+        empresa: 'marchi',
+        funcionarioId: '1'
       }
     });
 
@@ -111,7 +118,8 @@ describe('Expedicao scan-serie - concorrencia', () => {
       body: {
         codProdutoOmie: 'M-ID12L',
         serie: '3014980',
-        empresa: 'marchi'
+        empresa: 'marchi',
+        funcionarioId: '1'
       }
     });
 

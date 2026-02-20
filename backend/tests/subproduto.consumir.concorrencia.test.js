@@ -1,4 +1,4 @@
-jest.mock('../src/database/prisma', () => ({
+﻿jest.mock('../src/database/prisma', () => ({
   prisma: {
     $transaction: jest.fn()
   }
@@ -27,12 +27,17 @@ jest.mock('../src/integrations/viaonda/viaonda.facade', () => ({
 }));
 
 jest.mock('../src/integrations/omie/omie.produto', () => ({
-  validarProdutoExisteNoOmie: jest.fn()
+  consultarProdutoNoOmie: jest.fn()
 }));
 
 jest.mock('../src/integrations/omie/omie.estrutura', () => ({
   consultarEstruturaProduto: jest.fn(),
   extrairSubprodutosDoBOM: jest.fn()
+}));
+
+jest.mock('../src/domain/setorManutencao', () => ({
+  SETOR_PRODUCAO: 'producao',
+  validarFuncionarioAtivoNoSetor: jest.fn().mockResolvedValue({ ok: true })
 }));
 
 const { prisma } = require('../src/database/prisma');
@@ -41,7 +46,8 @@ const eventoRepo = require('../src/repositories/eventoOP.repository');
 const produtoFinalRepo = require('../src/repositories/produtoFinal.repository');
 const subprodutoRepo = require('../src/repositories/subproduto.repository');
 const { buscarEtiquetaProdutoFinal, buscarOP } = require('../src/integrations/viaonda/viaonda.facade');
-const { validarProdutoExisteNoOmie } = require('../src/integrations/omie/omie.produto');
+const { consultarProdutoNoOmie } = require('../src/integrations/omie/omie.produto');
+const { consultarEstruturaProduto, extrairSubprodutosDoBOM } = require('../src/integrations/omie/omie.estrutura');
 const consumirSubprodutoUsecase = require('../src/usecases/subproduto/consumirSubproduto.usecase');
 
 describe('Subproduto consumir - concorrencia', () => {
@@ -65,9 +71,11 @@ describe('Subproduto consumir - concorrencia', () => {
     });
 
     subprodutoRepo.findMesmoCodigoNoMesmoPF.mockResolvedValue(null);
-    buscarEtiquetaProdutoFinal.mockResolvedValue([{ serie: '3011284' }]);
+    buscarEtiquetaProdutoFinal.mockResolvedValue([{ serie: '3011284', codigo: 'M-ID40_V6_PCB_MONT' }]);
     buscarOP.mockResolvedValue([{ codigo: 'M-ID40_V6_PCB_MONT' }]);
-    validarProdutoExisteNoOmie.mockResolvedValue(true);
+    consultarProdutoNoOmie.mockResolvedValue({ descricao: 'ok' });
+    consultarEstruturaProduto.mockResolvedValue({});
+    extrairSubprodutosDoBOM.mockReturnValue([]);
   }
 
   function bodyBase() {
@@ -98,7 +106,7 @@ describe('Subproduto consumir - concorrencia', () => {
     const result = await consumirSubprodutoUsecase.execute(bodyBase());
 
     expect(result.status).toBe(409);
-    expect(result.body.erro).toMatch(/Conflito de concorrencia/i);
+    expect(result.body.erro).toMatch(/Conflito de concorr[eê]ncia/i);
     expect(result.body.code).toBe('CONCURRENCY_CONFLICT');
     expect(result.body.detalhe).toBeTruthy();
   });
